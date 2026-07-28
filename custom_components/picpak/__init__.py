@@ -4,12 +4,62 @@ from __future__ import annotations
 import logging
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 
-from .const import DOMAIN
+from .const import CONF_DEVICE_ID, DOMAIN, PLATFORMS
+from .coordinator import PicpakCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Setup une entry picpak : coordinator, device_info, platforms, services."""
+    coordinator = PicpakCoordinator(hass, entry)
+
+    # First refresh — récupère l'état initial + lève l'entry si BLE injoignable
+    await coordinator.async_config_entry_first_refresh()
+
+    # Récupère et enregistre les infos statiques (versions HW/SW, serial) — best effort
+    try:
+        info = await hass.async_add_executor_job(coordinator.client.info)
+    except Exception as exc:  # pragma: no cover — best effort
+        _LOGGER.warning("picpak info failed on setup: %s", exc)
+        info = {}
+
+    device_id = entry.data[CONF_DEVICE_ID]
+    device_registry = dr.async_get(hass)
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, device_id)},
+        manufacturer="Picpak",
+        model=info.get("model", "Unknown"),
+        sw_version=info.get("sw_version"),
+        hw_version=info.get("hw_version"),
+        serial_number=info.get("serial_number"),
+        name=f"Picpak {device_id[-8:]}",
+    )
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    await _async_register_services(hass)
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload une entry picpak."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        if not hass.data[DOMAIN]:
+            # dernier device → on peut désenregistrer les services
+            for svc in ("push_image", "display_slot", "clear_display", "erase_slot"):
+                if hass.services.has_service(DOMAIN, svc):
+                    hass.services.async_remove(DOMAIN, svc)
+    return unload_ok
 
 
 def _iter_coordinators(hass: HomeAssistant):
