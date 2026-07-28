@@ -70,6 +70,14 @@ class PicpakClient:
         except json.JSONDecodeError as exc:
             raise PicpakClientError(f"status: sortie CLI non-JSON: {stdout[:200]}") from exc
 
+    def info(self) -> dict[str, Any]:
+        """Retourne les infos statiques du device (versions HW/SW, serial, model)."""
+        stdout = self._run("info")
+        try:
+            return json.loads(stdout)
+        except json.JSONDecodeError as exc:
+            raise PicpakClientError(f"info: sortie CLI non-JSON: {stdout[:200]}") from exc
+
     def download_slot(self, slot_id: int) -> bytes:
         """Télécharge l'image du slot spécifié depuis le device. Retourne les bytes PNG."""
         if not (self.SLOT_MIN <= slot_id <= self.SLOT_MAX):

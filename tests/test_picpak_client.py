@@ -65,6 +65,22 @@ class TestStatus:
                 client.status()
 
 
+class TestInfo:
+    def test_info_success(self):
+        payload = {
+            "hw_version": "1.2.0",
+            "sw_version": "2.5.1",
+            "serial_number": "PP-2024-042-XYZ",
+            "model": "Picpak 4.2 BWRY",
+        }
+        with patch("subprocess.run", return_value=_completed(stdout=json.dumps(payload))) as mock_run:
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            result = client.info()
+        assert result == payload
+        cmd = mock_run.call_args[0][0]
+        assert "info" in cmd
+
+
 class TestDownloadSlot:
     def test_download_slot_success(self, tmp_path):
         # Le CLI `picpak download` écrit l'image dans un fichier temporaire.
