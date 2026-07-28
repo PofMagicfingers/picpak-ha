@@ -200,3 +200,28 @@ class TestErase:
         client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
         with pytest.raises(ValueError, match="0-699"):
             client.erase(-1)
+
+
+class TestScan:
+    def test_scan_returns_devices(self):
+        devices = [
+            {"device_id": "AA:BB:CC:DD:EE:FF", "name": "Picpak-01", "rssi": -55},
+            {"device_id": "11:22:33:44:55:66", "name": "Picpak-02", "rssi": -72},
+        ]
+        with patch("subprocess.run", return_value=_completed(stdout=json.dumps(devices))) as mock_run:
+            result = PicpakClient.scan(timeout=5)
+        assert result == devices
+        cmd = mock_run.call_args[0][0]
+        assert "scan" in cmd
+        # scan n'a pas de --device
+        assert "--device" not in cmd
+
+    def test_scan_empty(self):
+        with patch("subprocess.run", return_value=_completed(stdout="[]")):
+            result = PicpakClient.scan()
+        assert result == []
+
+    def test_scan_cli_error_raises(self):
+        with patch("subprocess.run", return_value=_completed(stderr="bluetooth unavailable", returncode=1)):
+            with pytest.raises(PicpakClientError, match="returncode=1"):
+                PicpakClient.scan()

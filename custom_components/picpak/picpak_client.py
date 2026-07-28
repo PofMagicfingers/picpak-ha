@@ -138,3 +138,34 @@ class PicpakClient:
         if not (self.SLOT_MIN <= slot_id <= self.SLOT_MAX):
             raise ValueError(f"slot_id {slot_id} hors range 0-699")
         self._run("erase", str(slot_id))
+
+    @staticmethod
+    def scan(cli_binary: str = "picpak", timeout: int = 10) -> list[dict[str, Any]]:
+        """Scan BLE pour trouver les devices Picpak à proximité.
+
+        Retourne une liste de dicts avec 'device_id', 'name', 'rssi'.
+        """
+        cmd = [cli_binary, "scan", "--json", "--timeout", str(timeout)]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout + 5,  # marge par rapport au CLI
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            raise PicpakClientError(f"CLI '{cli_binary}' introuvable") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise PicpakClientError(f"scan timeout après {timeout + 5}s") from exc
+
+        if result.returncode != 0:
+            raise PicpakClientError(
+                f"scan returncode={result.returncode}",
+                returncode=result.returncode,
+                stderr=result.stderr,
+            )
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise PicpakClientError(f"scan: sortie CLI non-JSON: {result.stdout[:200]}") from exc
