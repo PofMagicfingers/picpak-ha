@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tempfile
+from pathlib import Path
 from typing import Any
 
 
@@ -26,6 +28,9 @@ class PicpakClient:
         device_id: identifiant BLE du device (MAC address ou nom).
         cli_binary: nom ou chemin du binaire (défaut "picpak").
     """
+
+    SLOT_MIN = 0
+    SLOT_MAX = 699
 
     def __init__(self, device_id: str, cli_binary: str = "picpak") -> None:
         self._device_id = device_id
@@ -62,3 +67,16 @@ class PicpakClient:
             return json.loads(stdout)
         except json.JSONDecodeError as exc:
             raise PicpakClientError(f"status: sortie CLI non-JSON: {stdout[:200]}") from exc
+
+    def download_slot(self, slot_id: int) -> bytes:
+        """Télécharge l'image du slot spécifié depuis le device. Retourne les bytes PNG."""
+        if not (self.SLOT_MIN <= slot_id <= self.SLOT_MAX):
+            raise ValueError(f"slot_id {slot_id} hors range 0-699")
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        try:
+            self._run("download", str(slot_id), "--output", str(tmp_path))
+            return tmp_path.read_bytes()
+        finally:
+            tmp_path.unlink(missing_ok=True)

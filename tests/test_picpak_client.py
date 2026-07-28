@@ -63,3 +63,41 @@ class TestStatus:
             client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
             with pytest.raises(PicpakClientError, match="timeout"):
                 client.status()
+
+
+class TestDownloadSlot:
+    def test_download_slot_success(self, tmp_path):
+        # Le CLI `picpak download` écrit l'image dans un fichier temporaire.
+        # On simule ça en interceptant subprocess.run et en écrivant un PNG bidon
+        # au path que le CLI est censé produire.
+        fake_png = b"\x89PNG\r\n\x1a\nfake image bytes"
+
+        def _mock_run(cmd, **kwargs):
+            # Le client passe --output <path> au CLI pour spécifier le fichier de sortie
+            output_idx = cmd.index("--output")
+            output_path = cmd[output_idx + 1]
+            with open(output_path, "wb") as f:
+                f.write(fake_png)
+            return _completed(stdout="", returncode=0)
+
+        with patch("subprocess.run", side_effect=_mock_run) as mock_run:
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            result = client.download_slot(42)
+        assert result == fake_png
+        cmd = mock_run.call_args[0][0]
+        assert "download" in cmd
+        assert "42" in cmd
+        assert "--output" in cmd
+
+    def test_download_slot_out_of_range_raises(self):
+        client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+        with pytest.raises(ValueError, match="0-699"):
+            client.download_slot(700)
+        with pytest.raises(ValueError, match="0-699"):
+            client.download_slot(-1)
+
+    def test_download_slot_cli_error_raises(self):
+        with patch("subprocess.run", return_value=_completed(stderr="slot empty", returncode=1)):
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            with pytest.raises(PicpakClientError, match="returncode=1"):
+                client.download_slot(42)
