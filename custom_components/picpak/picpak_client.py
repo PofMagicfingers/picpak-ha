@@ -12,6 +12,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from .const import SLOT_MIN, SLOT_MAX, VALID_CROPS
+
 
 class PicpakClientError(Exception):
     """Erreur levée par PicpakClient (CLI absent, returncode ≠ 0, sortie non parsable)."""
@@ -29,10 +31,6 @@ class PicpakClient:
         device_id: identifiant BLE du device (MAC address ou nom).
         cli_binary: nom ou chemin du binaire (défaut "picpak").
     """
-
-    SLOT_MIN = 0
-    SLOT_MAX = 699
-    VALID_CROPS = ("smart", "center", "letterbox")
 
     def __init__(self, device_id: str, cli_binary: str = "picpak") -> None:
         self._device_id = device_id
@@ -80,7 +78,7 @@ class PicpakClient:
 
     def download_slot(self, slot_id: int) -> bytes:
         """Télécharge l'image du slot spécifié depuis le device. Retourne les bytes PNG."""
-        if not (self.SLOT_MIN <= slot_id <= self.SLOT_MAX):
+        if not (SLOT_MIN <= slot_id <= SLOT_MAX):
             raise ValueError(f"slot_id {slot_id} hors range 0-699")
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -96,10 +94,10 @@ class PicpakClient:
 
         Utilise l'option --overwrite pour remplacer sans confirmation.
         """
-        if not (self.SLOT_MIN <= slot_id <= self.SLOT_MAX):
+        if not (SLOT_MIN <= slot_id <= SLOT_MAX):
             raise ValueError(f"slot_id {slot_id} hors range 0-699")
-        if crop not in self.VALID_CROPS:
-            raise ValueError(f"crop {crop!r} invalide, attendu {self.VALID_CROPS}")
+        if crop not in VALID_CROPS:
+            raise ValueError(f"crop {crop!r} invalide, attendu {VALID_CROPS}")
 
         source_str = str(source)
         tmp_downloaded: Path | None = None
@@ -133,7 +131,7 @@ class PicpakClient:
 
     def display(self, slot_id: int) -> None:
         """Bascule l'affichage sur le slot spécifié (sans re-upload)."""
-        if not (self.SLOT_MIN <= slot_id <= self.SLOT_MAX):
+        if not (SLOT_MIN <= slot_id <= SLOT_MAX):
             raise ValueError(f"slot_id {slot_id} hors range 0-699")
         self._run("display", str(slot_id))
 
@@ -143,7 +141,7 @@ class PicpakClient:
 
     def erase(self, slot_id: int) -> None:
         """Libère le slot spécifié."""
-        if not (self.SLOT_MIN <= slot_id <= self.SLOT_MAX):
+        if not (SLOT_MIN <= slot_id <= SLOT_MAX):
             raise ValueError(f"slot_id {slot_id} hors range 0-699")
         self._run("erase", str(slot_id))
 
