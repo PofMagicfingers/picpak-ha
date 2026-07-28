@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -86,3 +87,9 @@ class PicpakSensorEntity(CoordinatorEntity[PicpakCoordinator], SensorEntity):
     @property
     def native_value(self):
         return self.coordinator.data.get(self.entity_description.data_key)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Rattache l'entité au device picpak dans le registry HA."""
+        device_id = self.coordinator.entry.data[CONF_DEVICE_ID]
+        return DeviceInfo(identifiers={(DOMAIN, device_id)})

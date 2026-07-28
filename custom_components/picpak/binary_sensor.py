@@ -4,6 +4,7 @@ from __future__ import annotations
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -35,3 +36,9 @@ class PicpakBinarySensorEntity(CoordinatorEntity[PicpakCoordinator], BinarySenso
     def is_on(self) -> bool | None:
         val = self.coordinator.data.get("open_door_refresh")
         return bool(val) if val is not None else None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Rattache l'entité au device picpak dans le registry HA."""
+        device_id = self.coordinator.entry.data[CONF_DEVICE_ID]
+        return DeviceInfo(identifiers={(DOMAIN, device_id)})

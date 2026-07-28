@@ -4,6 +4,7 @@ from __future__ import annotations
 from homeassistant.components.image import ImageEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -25,7 +26,7 @@ class PicpakImageEntity(CoordinatorEntity[PicpakCoordinator], ImageEntity):
     """Entité image qui reflète le slot actuellement affiché sur le device."""
 
     _attr_content_type = "image/png"
-    _attr_name = "Picpak image"
+    _attr_name = "Image"
     _attr_has_entity_name = True
 
     def __init__(self, coordinator: PicpakCoordinator, hass: HomeAssistant) -> None:
@@ -41,3 +42,9 @@ class PicpakImageEntity(CoordinatorEntity[PicpakCoordinator], ImageEntity):
     @property
     def extra_state_attributes(self) -> dict:
         return {"current_slot": self.coordinator.data.get("current_slot_id")}
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Rattache l'entité au device picpak dans le registry HA."""
+        device_id = self.coordinator.entry.data[CONF_DEVICE_ID]
+        return DeviceInfo(identifiers={(DOMAIN, device_id)})

@@ -24,6 +24,14 @@ def coordinator_off():
     return coord
 
 
+@pytest.fixture
+def coordinator_missing():
+    coord = MagicMock()
+    coord.data = {}  # clé open_door_refresh absente
+    coord.entry.data = {"device_id": "AA:BB:CC:DD:EE:FF"}
+    return coord
+
+
 def test_binary_sensor_is_on(coordinator_on):
     entity = PicpakBinarySensorEntity(coordinator_on)
     assert entity.is_on is True
@@ -37,3 +45,8 @@ def test_binary_sensor_is_off(coordinator_off):
 def test_binary_sensor_unique_id(coordinator_on):
     entity = PicpakBinarySensorEntity(coordinator_on)
     assert entity.unique_id == "AA:BB:CC:DD:EE:FF_open_door_refresh"
+
+
+def test_binary_sensor_is_on_none_when_missing(coordinator_missing):
+    entity = PicpakBinarySensorEntity(coordinator_missing)
+    assert entity.is_on is None
