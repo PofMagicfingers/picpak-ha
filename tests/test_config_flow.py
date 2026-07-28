@@ -50,3 +50,41 @@ async def test_user_flow_scan_empty_redirects_to_manual(hass: HomeAssistant):
         )
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "manual"
+
+
+@pytest.mark.asyncio
+async def test_manual_flow_valid_mac(hass: HomeAssistant):
+    """Entrée manuelle avec MAC valide → CREATE_ENTRY."""
+    with patch(
+        "custom_components.picpak.config_flow.PicpakClient.scan",
+        return_value=[],
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": "user"}
+        )
+        # scan vide → étape manuelle
+        assert result["step_id"] == "manual"
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"device_id": "AA:BB:CC:DD:EE:FF"},
+        )
+        assert result2["type"] == FlowResultType.CREATE_ENTRY
+        assert result2["data"] == {"device_id": "AA:BB:CC:DD:EE:FF"}
+
+
+@pytest.mark.asyncio
+async def test_manual_flow_invalid_mac_shows_error(hass: HomeAssistant):
+    """Entrée manuelle avec format invalide → error 'invalid_device_id'."""
+    with patch(
+        "custom_components.picpak.config_flow.PicpakClient.scan",
+        return_value=[],
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": "user"}
+        )
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"device_id": "not a mac"},
+        )
+        assert result2["type"] == FlowResultType.FORM
+        assert result2["errors"] == {"device_id": "invalid_device_id"}

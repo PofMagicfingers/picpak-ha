@@ -1,6 +1,7 @@
 """ConfigFlow pour l'intégration picpak (scan BLE + fallback manuel)."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -16,6 +17,7 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
     """Setup wizard picpak."""
 
     VERSION = 1
+    _MAC_RE = re.compile(r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
 
     def __init__(self) -> None:
         self._discovered_devices: list[dict[str, Any]] = []
@@ -55,7 +57,20 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
     async def async_step_manual(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Étape manuelle : saisie du MAC/ID en direct — implémentée en Task 17."""
-        # Stub minimal pour Task 16 — la logique complète est ajoutée en Task 17
+        """Étape manuelle : saisie du MAC/ID en direct avec validation."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            device_id = user_input[CONF_DEVICE_ID].strip()
+            if not self._MAC_RE.match(device_id):
+                errors[CONF_DEVICE_ID] = "invalid_device_id"
+            else:
+                await self.async_set_unique_id(device_id)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=f"Picpak {device_id[-8:]}",
+                    data={CONF_DEVICE_ID: device_id},
+                )
+
         schema = vol.Schema({vol.Required(CONF_DEVICE_ID): cv.string})
-        return self.async_show_form(step_id="manual", data_schema=schema)
+        return self.async_show_form(step_id="manual", data_schema=schema, errors=errors)

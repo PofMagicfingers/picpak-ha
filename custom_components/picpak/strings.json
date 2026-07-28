@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sélectionner un device Picpak",
+        "description": "Devices détectés par scan BLE",
+        "data": {
+          "device_id": "Device"
+        }
+      },
+      "manual": {
+        "title": "Saisir manuellement le device",
+        "description": "Format MAC : AA:BB:CC:DD:EE:FF",
+        "data": {
+          "device_id": "MAC address"
+        }
+      }
+    },
+    "error": {
+      "invalid_device_id": "Format MAC invalide (attendu AA:BB:CC:DD:EE:FF)"
+    },
+    "abort": {
+      "already_configured": "Ce device est déjà configuré"
+    }
+  }
+}
