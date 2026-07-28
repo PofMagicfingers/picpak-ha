@@ -1,0 +1,61 @@
+push_image:
+  name: Push image
+  description: Upload une image dans un slot et l'affiche sur le device
+  fields:
+    slot_id:
+      name: Slot ID
+      description: Slot cible (0-699)
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 699
+          mode: box
+    source:
+      name: Source
+      description: Path local (/config/www/...) ou URL http(s)://...
+      required: true
+      selector:
+        text:
+    crop:
+      name: Crop mode
+      description: Mode de crop de l'image
+      default: smart
+      selector:
+        select:
+          options:
+            - smart
+            - center
+            - letterbox
+
+display_slot:
+  name: Display slot
+  description: Bascule l'affichage sur un slot déjà uploadé (sans re-upload)
+  fields:
+    slot_id:
+      name: Slot ID
+      description: Slot cible (0-699)
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 699
+          mode: box
+
+clear_display:
+  name: Clear display
+  description: Efface l'affichage — le device passe en état neutre
+
+erase_slot:
+  name: Erase slot
+  description: Libère le slot spécifié
+  fields:
+    slot_id:
+      name: Slot ID
+      description: Slot à libérer (0-699)
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 699
+          mode: box
