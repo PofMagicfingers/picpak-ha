@@ -1,6 +1,7 @@
 """Tests pour les services HA du composant picpak."""
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +16,7 @@ def hass_with_coordinator(hass: HomeAssistant):
     coord = MagicMock()
     coord.client = MagicMock()
     coord.async_request_refresh = AsyncMock(return_value=None)
+    coord._ble_lock = asyncio.Lock()
     hass.data.setdefault(DOMAIN, {})["test_entry"] = coord
     return hass, coord
 

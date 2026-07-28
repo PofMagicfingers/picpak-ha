@@ -28,26 +28,30 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         source = call.data["source"]
         crop = call.data.get("crop", "smart")
         for coord in _iter_coordinators(hass):
-            await hass.async_add_executor_job(
-                lambda: coord.client.upload(source=source, slot_id=slot_id, crop=crop)
-            )
+            async with coord._ble_lock:
+                await hass.async_add_executor_job(
+                    lambda: coord.client.upload(source=source, slot_id=slot_id, crop=crop)
+                )
             await coord.async_request_refresh()
 
     async def _display_slot(call: ServiceCall) -> None:
         slot_id = call.data["slot_id"]
         for coord in _iter_coordinators(hass):
-            await hass.async_add_executor_job(coord.client.display, slot_id)
+            async with coord._ble_lock:
+                await hass.async_add_executor_job(coord.client.display, slot_id)
             await coord.async_request_refresh()
 
     async def _clear_display(call: ServiceCall) -> None:
         for coord in _iter_coordinators(hass):
-            await hass.async_add_executor_job(coord.client.clear_display)
+            async with coord._ble_lock:
+                await hass.async_add_executor_job(coord.client.clear_display)
             await coord.async_request_refresh()
 
     async def _erase_slot(call: ServiceCall) -> None:
         slot_id = call.data["slot_id"]
         for coord in _iter_coordinators(hass):
-            await hass.async_add_executor_job(coord.client.erase, slot_id)
+            async with coord._ble_lock:
+                await hass.async_add_executor_job(coord.client.erase, slot_id)
             await coord.async_request_refresh()
 
     slot_schema = vol.Schema({
