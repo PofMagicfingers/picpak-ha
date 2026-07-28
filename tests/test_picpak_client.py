@@ -160,3 +160,43 @@ class TestUpload:
         client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
         with pytest.raises(PicpakClientError, match="introuvable"):
             client.upload(source="/nonexistent/path.jpg", slot_id=42)
+
+
+class TestDisplay:
+    def test_display_success(self):
+        with patch("subprocess.run", return_value=_completed(returncode=0)) as mock_run:
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            client.display(42)
+        cmd = mock_run.call_args[0][0]
+        assert "display" in cmd
+        assert "42" in cmd
+
+    def test_display_out_of_range_raises(self):
+        client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+        with pytest.raises(ValueError, match="0-699"):
+            client.display(1000)
+
+
+class TestClearDisplay:
+    def test_clear_display_success(self):
+        with patch("subprocess.run", return_value=_completed(returncode=0)) as mock_run:
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            client.clear_display()
+        cmd = mock_run.call_args[0][0]
+        # La sous-commande peut être "clear" ou "erase-all" selon CLI ; on vise "clear"
+        assert "clear" in cmd
+
+
+class TestErase:
+    def test_erase_success(self):
+        with patch("subprocess.run", return_value=_completed(returncode=0)) as mock_run:
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            client.erase(42)
+        cmd = mock_run.call_args[0][0]
+        assert "erase" in cmd
+        assert "42" in cmd
+
+    def test_erase_out_of_range_raises(self):
+        client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+        with pytest.raises(ValueError, match="0-699"):
+            client.erase(-1)

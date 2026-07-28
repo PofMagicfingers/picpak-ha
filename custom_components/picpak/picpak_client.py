@@ -122,3 +122,19 @@ class PicpakClient:
         finally:
             if tmp_downloaded is not None:
                 tmp_downloaded.unlink(missing_ok=True)
+
+    def display(self, slot_id: int) -> None:
+        """Bascule l'affichage sur le slot spécifié (sans re-upload)."""
+        if not (self.SLOT_MIN <= slot_id <= self.SLOT_MAX):
+            raise ValueError(f"slot_id {slot_id} hors range 0-699")
+        self._run("display", str(slot_id))
+
+    def clear_display(self) -> None:
+        """Efface l'affichage — le device passe en état neutre."""
+        self._run("clear")
+
+    def erase(self, slot_id: int) -> None:
+        """Libère le slot spécifié."""
+        if not (self.SLOT_MIN <= slot_id <= self.SLOT_MAX):
+            raise ValueError(f"slot_id {slot_id} hors range 0-699")
+        self._run("erase", str(slot_id))
