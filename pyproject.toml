@@ -1,0 +1,23 @@
+[project]
+name = "picpak-ha"
+version = "0.1.0"
+description = "Home Assistant custom component for Picpak eink Bluetooth display"
+requires-python = ">=3.11"
+authors = [{name = "Pof Magicfingers", email = "pof@pof.pm"}]
+license = {text = "MIT"}
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-homeassistant-custom-component>=0.13",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
