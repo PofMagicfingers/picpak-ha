@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from .const import SLOT_MIN, SLOT_MAX, VALID_CROPS
+from .const import DEFAULT_CLI_TIMEOUT_SECONDS, SLOT_MIN, SLOT_MAX, VALID_CROPS
 
 
 class PicpakClientError(Exception):
@@ -36,7 +36,7 @@ class PicpakClient:
         self._device_id = device_id
         self._cli = cli_binary
 
-    def _run(self, subcommand: str, *args: str, timeout: int = 30) -> str:
+    def _run(self, subcommand: str, *args: str, timeout: int = DEFAULT_CLI_TIMEOUT_SECONDS) -> str:
         """Exécute `picpak <subcommand> --device <id> --json [args]`, retourne stdout."""
         cmd = [self._cli, subcommand, "--device", self._device_id, "--json", *args]
         try:
@@ -79,13 +79,18 @@ class PicpakClient:
     def download_slot(self, slot_id: int) -> bytes:
         """Télécharge l'image du slot spécifié depuis le device. Retourne les bytes PNG."""
         if not (SLOT_MIN <= slot_id <= SLOT_MAX):
-            raise ValueError(f"slot_id {slot_id} hors range 0-699")
+            raise ValueError(f"slot_id {slot_id} hors range {SLOT_MIN}-{SLOT_MAX}")
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp_path = Path(tmp.name)
         try:
             self._run("download", str(slot_id), "--output", str(tmp_path))
-            return tmp_path.read_bytes()
+            try:
+                return tmp_path.read_bytes()
+            except OSError as exc:
+                raise PicpakClientError(
+                    f"download_slot({slot_id}): fichier tempfile absent après succès CLI: {exc}"
+                ) from exc
         finally:
             tmp_path.unlink(missing_ok=True)
 
@@ -95,7 +100,7 @@ class PicpakClient:
         Utilise l'option --overwrite pour remplacer sans confirmation.
         """
         if not (SLOT_MIN <= slot_id <= SLOT_MAX):
-            raise ValueError(f"slot_id {slot_id} hors range 0-699")
+            raise ValueError(f"slot_id {slot_id} hors range {SLOT_MIN}-{SLOT_MAX}")
         if crop not in VALID_CROPS:
             raise ValueError(f"crop {crop!r} invalide, attendu {VALID_CROPS}")
 
@@ -108,7 +113,7 @@ class PicpakClient:
                 with tempfile.NamedTemporaryFile(suffix=".img", delete=False) as tmp:
                     tmp_downloaded = Path(tmp.name)
                 try:
-                    with urllib.request.urlopen(source_str, timeout=30) as resp:
+                    with urllib.request.urlopen(source_str, timeout=DEFAULT_CLI_TIMEOUT_SECONDS) as resp:
                         tmp_downloaded.write_bytes(resp.read())
                 except Exception as exc:
                     raise PicpakClientError(f"upload: download URL échoué: {exc}") from exc
@@ -132,7 +137,7 @@ class PicpakClient:
     def display(self, slot_id: int) -> None:
         """Bascule l'affichage sur le slot spécifié (sans re-upload)."""
         if not (SLOT_MIN <= slot_id <= SLOT_MAX):
-            raise ValueError(f"slot_id {slot_id} hors range 0-699")
+            raise ValueError(f"slot_id {slot_id} hors range {SLOT_MIN}-{SLOT_MAX}")
         self._run("display", str(slot_id))
 
     def clear_display(self) -> None:
@@ -142,7 +147,7 @@ class PicpakClient:
     def erase(self, slot_id: int) -> None:
         """Libère le slot spécifié."""
         if not (SLOT_MIN <= slot_id <= SLOT_MAX):
-            raise ValueError(f"slot_id {slot_id} hors range 0-699")
+            raise ValueError(f"slot_id {slot_id} hors range {SLOT_MIN}-{SLOT_MAX}")
         self._run("erase", str(slot_id))
 
     @staticmethod
@@ -161,9 +166,9 @@ class PicpakClient:
                 check=False,
             )
         except FileNotFoundError as exc:
-            raise PicpakClientError(f"CLI '{cli_binary}' introuvable") from exc
+            raise PicpakClientError(f"CLI '{cli_binary}' introuvable — vérifie l'installation") from exc
         except subprocess.TimeoutExpired as exc:
-            raise PicpakClientError(f"scan timeout après {timeout + 5}s") from exc
+            raise PicpakClientError(f"CLI '{cli_binary} scan' timeout après {timeout + 5}s") from exc
 
         if result.returncode != 0:
             raise PicpakClientError(

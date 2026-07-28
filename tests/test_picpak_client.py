@@ -118,6 +118,23 @@ class TestDownloadSlot:
             with pytest.raises(PicpakClientError, match="returncode=1"):
                 client.download_slot(42)
 
+    def test_download_slot_success_but_file_missing_raises(self):
+        # CLI retourne 0 mais le fichier de sortie n'existe pas (ex: supprimé entre-temps).
+        # Le tempfile est créé par download_slot() avant l'appel CLI (NamedTemporaryFile),
+        # donc pour simuler l'absence réelle il faut le supprimer dans le mock.
+        def _mock_missing_output(cmd, **kwargs):
+            output_idx = cmd.index("--output")
+            output_path = cmd[output_idx + 1]
+            import os
+
+            os.remove(output_path)
+            return _completed(returncode=0)
+
+        with patch("subprocess.run", side_effect=_mock_missing_output):
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            with pytest.raises(PicpakClientError, match="fichier tempfile absent"):
+                client.download_slot(42)
+
 
 class TestUpload:
     def test_upload_local_path_success(self, tmp_path):
@@ -241,3 +258,52 @@ class TestScan:
         with patch("subprocess.run", return_value=_completed(stderr="bluetooth unavailable", returncode=1)):
             with pytest.raises(PicpakClientError, match="returncode=1"):
                 PicpakClient.scan()
+
+    def test_scan_cli_missing_raises(self):
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            with pytest.raises(PicpakClientError, match="introuvable"):
+                PicpakClient.scan()
+
+    def test_scan_timeout_raises(self):
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="picpak", timeout=15)):
+            with pytest.raises(PicpakClientError, match="timeout"):
+                PicpakClient.scan()
+
+    def test_scan_invalid_json_raises(self):
+        with patch("subprocess.run", return_value=_completed(stdout="pas du json")):
+            with pytest.raises(PicpakClientError, match="non-JSON"):
+                PicpakClient.scan()
+
+
+class TestCliErrorPropagation:
+    def test_display_propagates_cli_error(self):
+        with patch("subprocess.run", return_value=_completed(stderr="err", returncode=1)):
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            with pytest.raises(PicpakClientError, match="returncode=1"):
+                client.display(42)
+
+    def test_clear_display_propagates_cli_error(self):
+        with patch("subprocess.run", return_value=_completed(stderr="err", returncode=1)):
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            with pytest.raises(PicpakClientError, match="returncode=1"):
+                client.clear_display()
+
+    def test_erase_propagates_cli_error(self):
+        with patch("subprocess.run", return_value=_completed(stderr="err", returncode=1)):
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            with pytest.raises(PicpakClientError, match="returncode=1"):
+                client.erase(42)
+
+    def test_info_propagates_cli_error(self):
+        with patch("subprocess.run", return_value=_completed(stderr="err", returncode=1)):
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            with pytest.raises(PicpakClientError, match="returncode=1"):
+                client.info()
+
+    def test_upload_cli_error_raises(self, tmp_path):
+        source = tmp_path / "p.jpg"
+        source.write_bytes(b"x")
+        with patch("subprocess.run", return_value=_completed(stderr="err", returncode=1)):
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            with pytest.raises(PicpakClientError, match="returncode=1"):
+                client.upload(source=str(source), slot_id=42)
