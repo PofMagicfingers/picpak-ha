@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.picpak.const import DOMAIN, CONF_DEVICE_ID
 from custom_components.picpak.coordinator import PicpakCoordinator
@@ -109,3 +110,17 @@ async def test_update_data_keeps_cache_when_download_fails(hass: HomeAssistant, 
         data = await coord._async_update_data()
 
     assert data["image_bytes"] == b"old cache"  # cache préservé
+
+
+@pytest.mark.asyncio
+async def test_update_data_raises_update_failed_on_ble_error(hass: HomeAssistant):
+    entry = _FakeEntry()
+
+    with patch("custom_components.picpak.coordinator.PicpakClient") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.status.side_effect = PicpakClientError("device unreachable")
+        mock_client_cls.return_value = mock_client
+
+        coord = PicpakCoordinator(hass, entry)
+        with pytest.raises(UpdateFailed, match="picpak status failed"):
+            await coord._async_update_data()
