@@ -124,3 +124,18 @@ async def test_update_data_raises_update_failed_on_ble_error(hass: HomeAssistant
         coord = PicpakCoordinator(hass, entry)
         with pytest.raises(UpdateFailed, match="picpak status failed"):
             await coord._async_update_data()
+
+
+@pytest.mark.asyncio
+async def test_update_data_raises_update_failed_on_malformed_status(hass: HomeAssistant):
+    entry = _FakeEntry()
+    incomplete_status = {"current_slot_id": 5}  # manque battery, images_stored, etc.
+
+    with patch("custom_components.picpak.coordinator.PicpakClient") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.status.return_value = incomplete_status
+        mock_client_cls.return_value = mock_client
+
+        coord = PicpakCoordinator(hass, entry)
+        with pytest.raises(UpdateFailed, match="malformed"):
+            await coord._async_update_data()

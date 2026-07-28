@@ -50,7 +50,16 @@ class PicpakCoordinator(DataUpdateCoordinator):
             except PicpakClientError as exc:
                 raise UpdateFailed(f"picpak status failed: {exc}") from exc
 
-            current_slot = status["current_slot_id"]
+            # Extraire les clés requises une fois, avec validation
+            try:
+                current_slot = status["current_slot_id"]
+                battery = status["battery"]
+                images_stored = status["images_stored"]
+                refresh_interval_seconds = status["refresh_interval"]
+                open_door_refresh = status["open_door_refresh"]
+            except KeyError as exc:
+                raise UpdateFailed(f"picpak status malformed (missing key): {exc}") from exc
+
             if current_slot != self._cached_slot_id:
                 try:
                     new_image = await self.hass.async_add_executor_job(
@@ -67,9 +76,9 @@ class PicpakCoordinator(DataUpdateCoordinator):
 
         return {
             "current_slot_id": current_slot,
-            "battery": status["battery"],
-            "images_stored": status["images_stored"],
-            "refresh_interval_seconds": status["refresh_interval"],
-            "open_door_refresh": status["open_door_refresh"],
+            "battery": battery,
+            "images_stored": images_stored,
+            "refresh_interval_seconds": refresh_interval_seconds,
+            "open_door_refresh": open_door_refresh,
             "image_bytes": self._cached_image_bytes,
         }
