@@ -43,15 +43,30 @@ class PicpakCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Poll status léger. Le download image conditionnel est ajouté en Task 9."""
+        """Poll status. Si slot changé, download nouvelle image. Sinon garde le cache."""
         async with self._ble_lock:
             try:
                 status = await self.hass.async_add_executor_job(self.client.status)
             except PicpakClientError as exc:
                 raise UpdateFailed(f"picpak status failed: {exc}") from exc
 
+            current_slot = status["current_slot_id"]
+            if current_slot != self._cached_slot_id:
+                try:
+                    new_image = await self.hass.async_add_executor_job(
+                        self.client.download_slot, current_slot
+                    )
+                    self._cached_image_bytes = new_image
+                    self._cached_slot_id = current_slot
+                except PicpakClientError as exc:
+                    _LOGGER.warning(
+                        "picpak download_slot(%s) failed: %s — keeping previous image cache",
+                        current_slot, exc,
+                    )
+                    # on garde _cached_image_bytes et _cached_slot_id inchangés
+
         return {
-            "current_slot_id": status["current_slot_id"],
+            "current_slot_id": current_slot,
             "battery": status["battery"],
             "images_stored": status["images_stored"],
             "refresh_interval_seconds": status["refresh_interval"],

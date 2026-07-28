@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.picpak.const import DOMAIN, CONF_DEVICE_ID
 from custom_components.picpak.coordinator import PicpakCoordinator
+from custom_components.picpak.picpak_client import PicpakClientError
 
 
 class _FakeEntry:
@@ -42,3 +43,69 @@ async def test_update_data_calls_client_status(hass: HomeAssistant):
     assert data["refresh_interval_seconds"] == 3600
     assert data["open_door_refresh"] is True
     mock_client.status.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_update_data_downloads_image_on_slot_change(hass: HomeAssistant):
+    entry = _FakeEntry()
+    status_1 = {"current_slot_id": 5, "battery": 90, "images_stored": 10,
+                "refresh_interval": 3600, "open_door_refresh": False}
+    status_2 = {"current_slot_id": 7, "battery": 90, "images_stored": 10,
+                "refresh_interval": 3600, "open_door_refresh": False}
+    png_5 = b"png bytes slot 5"
+    png_7 = b"png bytes slot 7"
+
+    with patch("custom_components.picpak.coordinator.PicpakClient") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.status.side_effect = [status_1, status_2]
+        mock_client.download_slot.side_effect = [png_5, png_7]
+        mock_client_cls.return_value = mock_client
+
+        coord = PicpakCoordinator(hass, entry)
+        data1 = await coord._async_update_data()
+        assert data1["image_bytes"] == png_5
+        assert mock_client.download_slot.call_count == 1
+
+        data2 = await coord._async_update_data()
+        assert data2["image_bytes"] == png_7
+        assert mock_client.download_slot.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_update_data_no_download_when_slot_unchanged(hass: HomeAssistant):
+    entry = _FakeEntry()
+    status = {"current_slot_id": 5, "battery": 90, "images_stored": 10,
+              "refresh_interval": 3600, "open_door_refresh": False}
+    png = b"png bytes slot 5"
+
+    with patch("custom_components.picpak.coordinator.PicpakClient") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.status.return_value = status
+        mock_client.download_slot.return_value = png
+        mock_client_cls.return_value = mock_client
+
+        coord = PicpakCoordinator(hass, entry)
+        await coord._async_update_data()  # 1er appel → download
+        await coord._async_update_data()  # 2e appel → pas de download
+
+    assert mock_client.download_slot.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_update_data_keeps_cache_when_download_fails(hass: HomeAssistant, caplog):
+    entry = _FakeEntry()
+    status = {"current_slot_id": 5, "battery": 90, "images_stored": 10,
+              "refresh_interval": 3600, "open_door_refresh": False}
+
+    with patch("custom_components.picpak.coordinator.PicpakClient") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.status.return_value = status
+        mock_client.download_slot.side_effect = PicpakClientError("BLE flaky")
+        mock_client_cls.return_value = mock_client
+
+        coord = PicpakCoordinator(hass, entry)
+        coord._cached_image_bytes = b"old cache"
+
+        data = await coord._async_update_data()
+
+    assert data["image_bytes"] == b"old cache"  # cache préservé
