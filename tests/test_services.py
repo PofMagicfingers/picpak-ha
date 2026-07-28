@@ -38,3 +38,37 @@ async def test_push_image_service_calls_upload(hass_with_coordinator):
         crop="smart",
     )
     coord.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_display_slot_service(hass_with_coordinator):
+    hass, coord = hass_with_coordinator
+    from custom_components.picpak import _async_register_services
+    await _async_register_services(hass)
+    await hass.services.async_call(
+        DOMAIN, "display_slot", {"slot_id": 10}, blocking=True
+    )
+    coord.client.display.assert_called_once_with(10)
+    coord.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_clear_display_service(hass_with_coordinator):
+    hass, coord = hass_with_coordinator
+    from custom_components.picpak import _async_register_services
+    await _async_register_services(hass)
+    await hass.services.async_call(DOMAIN, "clear_display", {}, blocking=True)
+    coord.client.clear_display.assert_called_once()
+    coord.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_erase_slot_service(hass_with_coordinator):
+    hass, coord = hass_with_coordinator
+    from custom_components.picpak import _async_register_services
+    await _async_register_services(hass)
+    await hass.services.async_call(
+        DOMAIN, "erase_slot", {"slot_id": 33}, blocking=True
+    )
+    coord.client.erase.assert_called_once_with(33)
+    coord.async_request_refresh.assert_called_once()

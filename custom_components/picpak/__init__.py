@@ -33,6 +33,27 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             )
             await coord.async_request_refresh()
 
+    async def _display_slot(call: ServiceCall) -> None:
+        slot_id = call.data["slot_id"]
+        for coord in _iter_coordinators(hass):
+            await hass.async_add_executor_job(coord.client.display, slot_id)
+            await coord.async_request_refresh()
+
+    async def _clear_display(call: ServiceCall) -> None:
+        for coord in _iter_coordinators(hass):
+            await hass.async_add_executor_job(coord.client.clear_display)
+            await coord.async_request_refresh()
+
+    async def _erase_slot(call: ServiceCall) -> None:
+        slot_id = call.data["slot_id"]
+        for coord in _iter_coordinators(hass):
+            await hass.async_add_executor_job(coord.client.erase, slot_id)
+            await coord.async_request_refresh()
+
+    slot_schema = vol.Schema({
+        vol.Required("slot_id"): vol.All(vol.Coerce(int), vol.Range(min=0, max=699)),
+    })
+
     hass.services.async_register(
         DOMAIN,
         "push_image",
@@ -43,3 +64,6 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             vol.Optional("crop", default="smart"): vol.In(["smart", "center", "letterbox"]),
         }),
     )
+    hass.services.async_register(DOMAIN, "display_slot", _display_slot, schema=slot_schema)
+    hass.services.async_register(DOMAIN, "clear_display", _clear_display, schema=vol.Schema({}))
+    hass.services.async_register(DOMAIN, "erase_slot", _erase_slot, schema=slot_schema)
