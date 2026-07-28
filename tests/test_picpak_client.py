@@ -101,3 +101,62 @@ class TestDownloadSlot:
             client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
             with pytest.raises(PicpakClientError, match="returncode=1"):
                 client.download_slot(42)
+
+
+class TestUpload:
+    def test_upload_local_path_success(self, tmp_path):
+        source = tmp_path / "photo.jpg"
+        source.write_bytes(b"\xff\xd8\xff\xe0 fake jpg")
+
+        with patch("subprocess.run", return_value=_completed(returncode=0)) as mock_run:
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            client.upload(source=str(source), slot_id=42, crop="smart")
+
+        cmd = mock_run.call_args[0][0]
+        assert "upload" in cmd
+        assert str(source) in cmd
+        assert "--start-slot" in cmd
+        assert "42" in cmd
+        assert "--overwrite" in cmd
+        assert "--crop" in cmd
+        assert "smart" in cmd
+
+    def test_upload_url_downloads_first(self, tmp_path):
+        # URL → doit télécharger dans un tempfile puis upload celui-ci
+        url = "https://example.com/photo.jpg"
+        fake_body = b"\xff\xd8\xff\xe0 downloaded jpg"
+
+        with (
+            patch("urllib.request.urlopen") as mock_urlopen,
+            patch("subprocess.run", return_value=_completed(returncode=0)) as mock_run,
+        ):
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = fake_body
+            client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+            client.upload(source=url, slot_id=10)
+
+        # subprocess.run appelé avec un path local (pas l'URL directement)
+        cmd = mock_run.call_args[0][0]
+        assert url not in cmd
+        # le dernier argument avant --start-slot devrait être un path local
+        # on vérifie juste que --start-slot 10 est là
+        assert "--start-slot" in cmd
+        assert "10" in cmd
+
+    def test_upload_slot_out_of_range_raises(self, tmp_path):
+        source = tmp_path / "p.jpg"
+        source.write_bytes(b"x")
+        client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+        with pytest.raises(ValueError, match="0-699"):
+            client.upload(source=str(source), slot_id=1000)
+
+    def test_upload_invalid_crop_raises(self, tmp_path):
+        source = tmp_path / "p.jpg"
+        source.write_bytes(b"x")
+        client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+        with pytest.raises(ValueError, match="crop"):
+            client.upload(source=str(source), slot_id=42, crop="wrong")
+
+    def test_upload_source_missing_raises(self):
+        client = PicpakClient(device_id="AA:BB:CC:DD:EE:FF")
+        with pytest.raises(PicpakClientError, match="introuvable"):
+            client.upload(source="/nonexistent/path.jpg", slot_id=42)

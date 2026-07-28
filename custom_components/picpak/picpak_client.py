@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import subprocess
 import tempfile
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ class PicpakClient:
 
     SLOT_MIN = 0
     SLOT_MAX = 699
+    VALID_CROPS = ("smart", "center", "letterbox")
 
     def __init__(self, device_id: str, cli_binary: str = "picpak") -> None:
         self._device_id = device_id
@@ -80,3 +82,43 @@ class PicpakClient:
             return tmp_path.read_bytes()
         finally:
             tmp_path.unlink(missing_ok=True)
+
+    def upload(self, source: str | Path, slot_id: int, crop: str = "smart") -> None:
+        """Upload une image (path local ou URL) dans le slot spécifié et l'affiche.
+
+        Utilise l'option --overwrite pour remplacer sans confirmation.
+        """
+        if not (self.SLOT_MIN <= slot_id <= self.SLOT_MAX):
+            raise ValueError(f"slot_id {slot_id} hors range 0-699")
+        if crop not in self.VALID_CROPS:
+            raise ValueError(f"crop {crop!r} invalide, attendu {self.VALID_CROPS}")
+
+        source_str = str(source)
+        tmp_downloaded: Path | None = None
+
+        try:
+            if source_str.startswith(("http://", "https://")):
+                # Télécharger dans un tempfile
+                with tempfile.NamedTemporaryFile(suffix=".img", delete=False) as tmp:
+                    tmp_downloaded = Path(tmp.name)
+                try:
+                    with urllib.request.urlopen(source_str, timeout=30) as resp:
+                        tmp_downloaded.write_bytes(resp.read())
+                except Exception as exc:
+                    raise PicpakClientError(f"upload: download URL échoué: {exc}") from exc
+                actual_source = tmp_downloaded
+            else:
+                actual_source = Path(source_str)
+                if not actual_source.exists():
+                    raise PicpakClientError(f"upload: source introuvable: {source_str}")
+
+            self._run(
+                "upload",
+                str(actual_source),
+                "--start-slot", str(slot_id),
+                "--overwrite",
+                "--crop", crop,
+            )
+        finally:
+            if tmp_downloaded is not None:
+                tmp_downloaded.unlink(missing_ok=True)
