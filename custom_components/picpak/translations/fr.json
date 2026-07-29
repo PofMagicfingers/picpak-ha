@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sélectionner un device Picpak",
+        "description": "Devices détectés via le scan Bluetooth. Choisis le tien dans la liste.",
+        "data": {
+          "device_id": "Device"
+        }
+      },
+      "manual": {
+        "title": "Saisie manuelle du device Picpak",
+        "description": "Le scan Bluetooth n'a détecté aucun device Picpak. Saisis l'adresse MAC de ton device manuellement.\n\nSi tu n'as pas de MAC à saisir, vérifie que Home Assistant a bien accès à un adaptateur Bluetooth (voir l'intégration Bluetooth officielle ou le partage BT côté container/host).",
+        "data": {
+          "device_id": "Adresse MAC"
+        },
+        "data_description": {
+          "device_id": "Format AA:BB:CC:DD:EE:FF — 6 octets hex séparés par ':'. Tu peux la trouver via l'app Picpak officielle, sur l'étiquette du device, ou en scannant avec nRF Connect côté téléphone."
+        }
+      }
+    },
+    "error": {
+      "invalid_device_id": "Format MAC invalide (attendu AA:BB:CC:DD:EE:FF)"
+    },
+    "abort": {
+      "already_configured": "Ce device est déjà configuré"
+    }
+  }
+}
