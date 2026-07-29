@@ -8,14 +8,11 @@ Home Assistant integration for [Picpak](https://picpak.tech) e-ink Bluetooth pho
 2. Install "Picpak" from the HACS list.
 3. Restart Home Assistant.
 
-## Installation of the required CLI
+## Runtime dependency
 
 This integration wraps the `picpak` CLI (from [akx/picpak-ble](https://github.com/akx/picpak-ble))
-via subprocess. You must install it on the same host as Home Assistant:
-
-```bash
-pip install "picpak[cli]"
-```
+via subprocess. The `picpak-ble[cli]` package is declared in `manifest.json` and Home Assistant
+installs it automatically at first setup — no manual step required.
 
 ## Configuration
 
