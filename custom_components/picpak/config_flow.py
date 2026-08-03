@@ -36,8 +36,11 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
         """
         results: list[dict[str, Any]] = []
         try:
-            service_infos = list(
+            connectable_infos = list(
                 bluetooth.async_discovered_service_info(self.hass, connectable=True)
+            )
+            all_infos = list(
+                bluetooth.async_discovered_service_info(self.hass, connectable=False)
             )
         except Exception as exc:
             _LOGGER.error("picpak scan: read of HA bluetooth cache raised: %s", exc)
@@ -45,9 +48,12 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
             return
 
         _LOGGER.info(
-            "picpak scan: HA bluetooth cache contains %d connectable device(s)",
-            len(service_infos),
+            "picpak scan: HA bluetooth cache contains %d connectable + %d total device(s)",
+            len(connectable_infos), len(all_infos),
         )
+        # On garde le superset (all_infos inclut connectable + advertising-only,
+        # y compris via ESPHome BLE proxies non-connectables).
+        service_infos = all_infos
         for info in service_infos:
             name = info.name or ""
             service_uuids = {u.lower() for u in (info.service_uuids or [])}

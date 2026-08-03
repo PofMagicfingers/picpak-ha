@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.11 — 2026-08-03
+
+Widen the scan to include advertising-only devices (not just connectable ones).
+
+### Why
+
+v0.1.10 logs on real hardware showed `HA bluetooth cache contains 0 connectable device(s)` while the PicPak was actively advertising. `connectable=True` filters out devices seen only via an ESPHome BLE proxy (which advertises but doesn't route the connection), and also filters out devices HA hasn't yet promoted to "connectable" status. Reading the full cache (`connectable=False`) gives the superset and lets the filter decide.
+
+### Changed
+
+- `config_flow._run_scan` now reads both `connectable=True` (for the log count) and `connectable=False` (the superset actually used for matching).
+
 ## 0.1.10 — 2026-08-03
 
 Diagnostic logs on the config-flow scan — no functional change.
