@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.5 — 2026-08-03
+
+Fix the real cause of the Bluetooth issue in rootless podman + drop the sitecustomize workaround.
+
+### Changed
+
+- `requirements` now points to a fork of `picpak-ble` with the `bleak<2` pin relaxed to `bleak<4`. Repository: [PofMagicfingers/picpak-ble@bleak-lt-4](https://github.com/PofMagicfingers/picpak-ble/tree/bleak-lt-4).
+
+### Removed
+
+- Module-level dbus-fast auth monkey-patch (`UID_NOT_SPECIFIED = None`) that never fired in the subprocess `picpak` CLI (as pointed out — the CLI starts its own Python interpreter that loads the system-level `sitecustomize.py`, not this custom component's patch).
+- `_ensure_sitecustomize_patch()` helper and its `async_setup()` invocation, no longer needed.
+
+### Why
+
+The actual blocker was the defensive `bleak<2` pin in `picpak-ble` (against the 2.0 AcquireNotify breaking change that bleak 3.0.2 reverted in May 2026). The pin conflicts with HA's own bleak 3.x install. Loosening it to `bleak<4` in a fork resolves the underlying `pip` conflict without any runtime workaround. Analysis: picpak-ble uses only `BleakClient`, `start_notify`, `write_gatt_char`, and `BleakScanner.discover` — all stable APIs since bleak 0.x.
+
 ## 0.1.4 — 2026-07-29
 
 Workaround for rootless podman + Bluetooth + dbus REJECTED:['EXTERNAL'] auth error.
