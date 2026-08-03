@@ -1,4 +1,4 @@
-"""ConfigFlow pour l'intégration picpak (scan BLE + fallback manuel)."""
+"""ConfigFlow pour l'intégration picpak (scan BLE + relance + fallback manuel)."""
 from __future__ import annotations
 
 import re
@@ -22,6 +22,14 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._discovered_devices: list[dict[str, Any]] = []
 
+    async def _run_scan(self) -> None:
+        try:
+            self._discovered_devices = await self.hass.async_add_executor_job(
+                PicpakClient.scan
+            )
+        except PicpakClientError:
+            self._discovered_devices = []
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Étape scan : liste les devices BLE + sélection."""
         errors: dict[str, str] = {}
@@ -35,18 +43,13 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
                 data={CONF_DEVICE_ID: device_id},
             )
 
-        # Premier appel : on scanne
-        if not self._discovered_devices:
-            try:
-                self._discovered_devices = await self.hass.async_add_executor_job(
-                    PicpakClient.scan
-                )
-            except PicpakClientError:
-                self._discovered_devices = []
+        await self._run_scan()
 
         if not self._discovered_devices:
-            # Aucun device → bascule vers entrée manuelle
-            return await self.async_step_manual()
+            # Aucun device détecté — l'utilisateur n'a probablement pas
+            # activé le mode advertising sur son device (appui 3s bouton).
+            # On propose de rescanner après manip, ou de saisir le MAC en direct.
+            return await self.async_step_no_devices()
 
         schema = vol.Schema({
             vol.Required(CONF_DEVICE_ID): vol.In({
@@ -55,6 +58,13 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
             }),
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def async_step_no_devices(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Aucun device détecté — instructions + menu (rescan / manuel)."""
+        return self.async_show_menu(
+            step_id="no_devices",
+            menu_options=["user", "manual"],
+        )
 
     async def async_step_manual(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Étape manuelle : saisie du MAC/ID en direct avec validation."""

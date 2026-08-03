@@ -8,9 +8,17 @@
           "device_id": "Device"
         }
       },
+      "no_devices": {
+        "title": "No Picpak device detected",
+        "description": "The Bluetooth scan didn't detect any Picpak device.\n\n**By default, a Picpak device doesn't advertise itself over BLE to save battery.** To make it discoverable:\n\n1. Press and hold the button on your Picpak for **3 seconds**\n2. The LED should blink to confirm the device is now advertising\n3. Then click **Rescan** below\n\nIf you already know the MAC address of your device, you can also enter it manually.",
+        "menu_options": {
+          "user": "Rescan (after pressing 3s)",
+          "manual": "Enter MAC manually"
+        }
+      },
       "manual": {
         "title": "Enter Picpak device manually",
-        "description": "The Bluetooth scan didn't detect any Picpak device. Enter the MAC address of your device manually.\n\nIf you have no MAC to enter, check that Home Assistant has access to a Bluetooth adapter (see the official Bluetooth integration or your container/host BT sharing).",
+        "description": "Enter the MAC address of your Picpak device.\n\nIf you also don't have the MAC handy, check that Home Assistant has access to a Bluetooth adapter (see the official Bluetooth integration or your container/host BT sharing).",
         "data": {
           "device_id": "MAC address"
         },

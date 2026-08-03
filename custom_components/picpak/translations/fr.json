@@ -8,9 +8,17 @@
           "device_id": "Device"
         }
       },
+      "no_devices": {
+        "title": "Aucun Picpak détecté",
+        "description": "Le scan Bluetooth n'a détecté aucun device Picpak.\n\n**Par défaut, un Picpak n'émet pas en BLE pour économiser sa batterie.** Pour le rendre visible :\n\n1. Appuie sur le bouton du device et **maintiens-le 3 secondes**\n2. La LED doit clignoter pour confirmer que le device émet\n3. Puis clique sur **Relancer le scan** ci-dessous\n\nSi tu connais déjà l'adresse MAC de ton device, tu peux aussi la saisir manuellement.",
+        "menu_options": {
+          "user": "Relancer le scan (après appui 3s)",
+          "manual": "Saisir la MAC manuellement"
+        }
+      },
       "manual": {
         "title": "Saisie manuelle du device Picpak",
-        "description": "Le scan Bluetooth n'a détecté aucun device Picpak. Saisis l'adresse MAC de ton device manuellement.\n\nSi tu n'as pas de MAC à saisir, vérifie que Home Assistant a bien accès à un adaptateur Bluetooth (voir l'intégration Bluetooth officielle ou le partage BT côté container/host).",
+        "description": "Saisis l'adresse MAC de ton device Picpak.\n\nSi tu n'as pas non plus la MAC sous la main, vérifie que Home Assistant a bien accès à un adaptateur Bluetooth (voir l'intégration Bluetooth officielle ou le partage BT côté container/host).",
         "data": {
           "device_id": "Adresse MAC"
         },

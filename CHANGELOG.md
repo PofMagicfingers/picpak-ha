@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.6 — 2026-08-03
+
+Better UX when no Picpak device is detected during scan (instead of jumping straight to manual MAC entry).
+
+### Added
+
+- New `no_devices` step in the config flow: when the initial Bluetooth scan finds nothing, the user now sees an explanation that Picpak devices don't advertise by default (battery saving) and needs a **3-second button press to enter advertising mode**, plus a menu with two options:
+  - **Rescan** — retries the BLE scan (after the user has pressed the button)
+  - **Enter MAC manually** — jumps to the existing manual-entry step
+- English + French translations for the new step.
+
+### Why
+
+Reported after first successful install of v0.1.5 on real hardware: the scan returned empty because the Picpak wasn't in advertising mode, and the UI silently jumped to manual MAC entry without explaining why or telling the user how to make the device discoverable.
+
 ## 0.1.5 — 2026-08-03
 
 Fix the real cause of the Bluetooth issue in rootless podman + drop the sitecustomize workaround.
