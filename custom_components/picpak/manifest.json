@@ -7,5 +7,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/PofMagicfingers/picpak-ha/issues",
   "requirements": ["picpak-ble[client,image] @ git+https://github.com/PofMagicfingers/picpak-ble.git@bleak-lt-4"],
-  "version": "0.1.12"
+  "version": "0.1.13"
 }

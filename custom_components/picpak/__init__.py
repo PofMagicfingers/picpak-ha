@@ -2,12 +2,9 @@
 from __future__ import annotations
 
 import logging
+import sys
 
-import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import config_validation as cv, device_registry as dr
-from homeassistant.helpers.typing import ConfigType
+_LOGGER = logging.getLogger(__name__)
 
 # Rootless podman workaround (applied at custom_component import, before HA
 # loads its own bluetooth integration). dbus-fast defaults to sending its own
@@ -17,16 +14,29 @@ from homeassistant.helpers.typing import ConfigType
 # UID_NOT_SPECIFIED to None makes dbus-fast skip the uid announcement, so
 # dbus falls back to SO_PEERCRED which matches. Fixes HA's own Bluetooth
 # integration AND our own picpak-ble in-process calls in one shot.
+_DBUS_ALREADY_IMPORTED = "dbus_fast.auth" in sys.modules
 try:
     import dbus_fast.auth as _dbf_auth
     _dbf_auth.UID_NOT_SPECIFIED = None
+    _LOGGER.warning(
+        "picpak: dbus-fast auth patch applied (UID_NOT_SPECIFIED=None); "
+        "dbus_fast.auth was %s imported by another module",
+        "already" if _DBUS_ALREADY_IMPORTED else "not yet",
+    )
 except ImportError:
-    pass  # dbus-fast not installed yet — the requirement will pull it in
+    _LOGGER.warning(
+        "picpak: dbus-fast not installed yet, cannot apply auth patch — "
+        "restart HA after picpak-ble is installed to activate the patch"
+    )
+
+import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers.typing import ConfigType
 
 from .const import CONF_DEVICE_ID, DOMAIN, PLATFORMS
 from .coordinator import PicpakCoordinator
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.13 — 2026-08-03
+
+Log confirmation that the dbus-fast auth patch was actually applied — and whether it fired too late.
+
+### Why
+
+After v0.1.12 shipped a real fix for the rootless-podman dbus REJECTED issue, we couldn't tell from the logs whether the module-level patch had fired at all, or fired too late (after HA's bluetooth integration had already loaded `dbus_fast.auth`). This adds a WARNING-level log at every startup — visible in the default HA log without enabling debug — that reports both facts.
+
+### Added
+
+- Startup log line: `picpak: dbus-fast auth patch applied (UID_NOT_SPECIFIED=None); dbus_fast.auth was {already,not yet} imported by another module`. If `already`, the patch is applied but any code that read the value before the patch is now stale — a restart may be needed.
+
 ## 0.1.12 — 2026-08-03
 
 Restore the rootless-podman dbus-fast auth workaround — this time in the right place.
