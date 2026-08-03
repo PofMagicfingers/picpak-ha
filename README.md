@@ -1,5 +1,7 @@
 # Picpak — Home Assistant custom component
 
+**Current version: 0.1.7** ([CHANGELOG](CHANGELOG.md)) — 2026-08-03
+
 Home Assistant integration for [Picpak](https://picpak.tech) e-ink Bluetooth photo frame.
 
 ## Installation via HACS
@@ -10,9 +12,11 @@ Home Assistant integration for [Picpak](https://picpak.tech) e-ink Bluetooth pho
 
 ## Runtime dependency
 
-This integration wraps the `picpak` CLI (from [akx/picpak-ble](https://github.com/akx/picpak-ble))
-via subprocess. The `picpak-ble[cli]` package is declared in `manifest.json` and Home Assistant
-installs it automatically at first setup — no manual step required.
+This integration uses [PofMagicfingers/picpak-ble](https://github.com/PofMagicfingers/picpak-ble)
+(fork of [akx/picpak-ble](https://github.com/akx/picpak-ble) with a relaxed `bleak` pin) as an
+in-process async library. The `picpak-ble[client,image]` package is declared in `manifest.json`
+and Home Assistant installs it automatically at first setup — no manual step required. No
+external CLI binary is called ; all BLE operations run in the main HA process.
 
 ## Configuration
 
