@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.8 — 2026-08-03
+
+Docs — version badge at top of README + doc alignment with the v0.1.7 refactor.
+
+### Why
+
+HACS tracks git tags/releases as its "version" surface. A commit without a tag shows up as a raw sha (`7bdf590`) rather than a version — hard to eyeball what's installed vs available. Bumping so the README badge and the manifest agree, and both are visible in HACS after this tag is fetched.
+
 ## 0.1.7 — 2026-08-03
 
 Big refactor: use `picpak-ble` as an in-process async library instead of shelling out to its CLI.
