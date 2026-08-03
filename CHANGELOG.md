@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.14 — 2026-08-03
+
+Real fix for rootless-podman dbus REJECTED: write a `sitecustomize.py` so Python loads the patch before any user import (including HA's bluetooth stack).
+
+### Why
+
+v0.1.13 log proved the runtime patch fires **after** HA has already imported `dbus_fast.auth`: `dbus_fast.auth was already imported by another module`. Once HA's bluez manager has opened its dbus connection with the pre-patched UID_NOT_SPECIFIED value, changing the value in-process no longer helps — HA's connection is already stuck on the rejected handshake.
+
+Python's `site` module loads `sitecustomize.py` automatically at interpreter startup, **before any user import**. Writing our patch there guarantees `UID_NOT_SPECIFIED = None` before HA even loads, so its very first dbus handshake succeeds.
+
+### Added
+
+- `_ensure_sitecustomize_patch()` (from v0.1.4, adapted): writes an idempotent patch to `site-packages/sitecustomize.py` from `async_setup()`. First install requires **two container restarts** — the first writes the file (no effect this run because Python already started), the second loads it.
+
+### Changed
+
+- WARNING wording of `picpak scan: no Picpak match` now reports both counts (total + connectable) for less confusion.
+
 ## 0.1.13 — 2026-08-03
 
 Log confirmation that the dbus-fast auth patch was actually applied — and whether it fired too late.

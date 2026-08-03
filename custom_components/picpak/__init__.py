@@ -2,31 +2,43 @@
 from __future__ import annotations
 
 import logging
+import site
 import sys
+from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
 
-# Rootless podman workaround (applied at custom_component import, before HA
-# loads its own bluetooth integration). dbus-fast defaults to sending its own
-# uid in the EXTERNAL auth handshake with the system bus. In rootless podman
-# the container's uid 0 doesn't match the mapped host uid the kernel reports
-# via SO_PEERCRED — dbus rejects with REJECTED:['EXTERNAL']. Setting
-# UID_NOT_SPECIFIED to None makes dbus-fast skip the uid announcement, so
-# dbus falls back to SO_PEERCRED which matches. Fixes HA's own Bluetooth
-# integration AND our own picpak-ble in-process calls in one shot.
+# Rootless podman workaround. dbus-fast defaults to sending its own uid in the
+# EXTERNAL auth handshake with the system bus. In rootless podman the container's
+# uid 0 doesn't match the mapped host uid the kernel reports via SO_PEERCRED —
+# dbus rejects with REJECTED:['EXTERNAL']. Setting UID_NOT_SPECIFIED to None
+# makes dbus-fast skip the uid announcement, so dbus falls back to SO_PEERCRED
+# which matches. Fixes HA's own Bluetooth integration AND our own picpak-ble
+# in-process calls in one shot.
+#
+# The runtime import-time patch below is best-effort. If HA already imported
+# dbus_fast.auth AND already opened a bluez connection with the previous
+# UID_NOT_SPECIFIED value before we load, the patch is too late for the current
+# process — HA's bluetooth stack is already stuck on the rejected handshake.
+# The permanent fix is `_ensure_sitecustomize_patch()`, called from async_setup(),
+# which writes a sitecustomize.py the Python interpreter loads at every subsequent
+# startup, BEFORE any user import. First install requires TWO container restarts:
+# 1st writes sitecustomize.py (no effect this run), 2nd loads it → patch active.
 _DBUS_ALREADY_IMPORTED = "dbus_fast.auth" in sys.modules
 try:
     import dbus_fast.auth as _dbf_auth
     _dbf_auth.UID_NOT_SPECIFIED = None
     _LOGGER.warning(
-        "picpak: dbus-fast auth patch applied (UID_NOT_SPECIFIED=None); "
-        "dbus_fast.auth was %s imported by another module",
+        "picpak: dbus-fast runtime auth patch applied (UID_NOT_SPECIFIED=None); "
+        "dbus_fast.auth was %s imported by another module. "
+        "If already imported, this current process may still fail — "
+        "restart the container to activate the permanent sitecustomize patch.",
         "already" if _DBUS_ALREADY_IMPORTED else "not yet",
     )
 except ImportError:
     _LOGGER.warning(
-        "picpak: dbus-fast not installed yet, cannot apply auth patch — "
-        "restart HA after picpak-ble is installed to activate the patch"
+        "picpak: dbus-fast not installed yet, cannot apply runtime auth patch — "
+        "restart HA after picpak-ble is installed"
     )
 
 import voluptuous as vol
@@ -39,7 +51,62 @@ from .const import CONF_DEVICE_ID, DOMAIN, PLATFORMS
 from .coordinator import PicpakCoordinator
 
 
+_SITECUSTOMIZE_MARKER = "# picpak-ha : dbus-fast auth EXTERNAL patch for rootless podman"
+_SITECUSTOMIZE_PATCH = f"""
+{_SITECUSTOMIZE_MARKER}
+try:
+    import dbus_fast.auth as _dbf_auth
+    _dbf_auth.UID_NOT_SPECIFIED = None
+    import sys as _sys
+    print("[picpak] dbus-fast auth patched via sitecustomize", file=_sys.stderr)
+except ImportError:
+    pass
+"""
+
+
+def _ensure_sitecustomize_patch() -> None:
+    """Write sitecustomize.py in site-packages so Python loads the dbus patch before ANY user import.
+
+    Python's `site` module loads sitecustomize.py automatically at interpreter
+    startup, before any `import` statement in user code runs. Writing our
+    monkey-patch there guarantees that dbus_fast.auth.UID_NOT_SPECIFIED is None
+    by the time HA (or anything else) imports dbus_fast for the first time.
+
+    Idempotent: the marker is checked before appending. Safe to call every boot.
+    First call has no effect this run (Python interpreter already started without
+    the file); it takes effect at the NEXT container restart.
+    """
+    try:
+        for sp in site.getsitepackages():
+            sp_path = Path(sp)
+            if not sp_path.is_dir():
+                continue
+            target = sp_path / "sitecustomize.py"
+            existing = target.read_text() if target.exists() else ""
+            if _SITECUSTOMIZE_MARKER in existing:
+                _LOGGER.info("picpak: sitecustomize dbus patch already present at %s", target)
+                return
+            new_content = existing + _SITECUSTOMIZE_PATCH
+            target.write_text(new_content)
+            _LOGGER.warning(
+                "picpak: dbus-fast auth patch written to %s — RESTART THE CONTAINER "
+                "one more time to activate it (this run stays broken)",
+                target,
+            )
+            return
+        _LOGGER.warning("picpak: no writable site-packages found for sitecustomize.py")
+    except (OSError, PermissionError) as exc:
+        _LOGGER.warning("picpak: could not write sitecustomize.py: %s", exc)
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Install dbus-fast auth workaround via sitecustomize.py.
+
+    Fired once per HA boot, before any ConfigEntry setup. The patch itself
+    only takes effect at the NEXT container restart (Python has already
+    started this time); on first install two restarts are required.
+    """
+    await hass.async_add_executor_job(_ensure_sitecustomize_patch)
     return True
 
 

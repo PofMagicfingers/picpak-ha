@@ -73,10 +73,10 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if not results:
             _LOGGER.warning(
-                "picpak scan: no Picpak match among %d connectable device(s) — "
+                "picpak scan: no Picpak match among %d device(s) total (%d connectable) — "
                 "check that the device is in pairing mode (LED lit) and the HA "
                 "Bluetooth integration sees advertisements",
-                len(service_infos),
+                len(service_infos), len(connectable_infos),
             )
         else:
             _LOGGER.info("picpak scan: %d Picpak device(s) matched", len(results))
