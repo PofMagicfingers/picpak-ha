@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.10 — 2026-08-03
+
+Diagnostic logs on the config-flow scan — no functional change.
+
+### Added
+
+- `config_flow._run_scan` now logs, per invocation:
+  - INFO: how many connectable devices HA's Bluetooth central scanner has cached
+  - DEBUG: for each candidate — address, name, rssi, service_uuids, match reason
+  - WARNING when no Picpak was matched among N candidates
+  - ERROR if the HA cache read raised
+
+### Why
+
+v0.1.9 scan returned empty on real hardware while the PicPak was in "Waiting for pairing". Not enough visibility to know whether HA's central scanner sees nothing at all (adapter/permission issue), or sees devices but the PicPak isn't among them (advertising not picked up), or sees the PicPak but the filter doesn't match (name/UUID mismatch). These logs surface all three cases.
+
 ## 0.1.9 — 2026-08-03
 
 Fix scan: read HA's central Bluetooth scanner cache instead of racing it with an ad-hoc `BleakScanner.discover`.

@@ -1,6 +1,7 @@
 """ConfigFlow pour l'intégration picpak (scan BLE via HA bluetooth central + fallback manuel)."""
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
@@ -12,6 +13,8 @@ from homeassistant.helpers import config_validation as cv
 from picpak.protocol import SERVICE_UUID
 
 from .const import CONF_DEVICE_ID, DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -33,22 +36,44 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
         """
         results: list[dict[str, Any]] = []
         try:
-            service_infos = bluetooth.async_discovered_service_info(
-                self.hass, connectable=True
+            service_infos = list(
+                bluetooth.async_discovered_service_info(self.hass, connectable=True)
             )
-        except Exception:
+        except Exception as exc:
+            _LOGGER.error("picpak scan: read of HA bluetooth cache raised: %s", exc)
             self._discovered_devices = []
             return
 
+        _LOGGER.info(
+            "picpak scan: HA bluetooth cache contains %d connectable device(s)",
+            len(service_infos),
+        )
         for info in service_infos:
             name = info.name or ""
             service_uuids = {u.lower() for u in (info.service_uuids or [])}
-            if SERVICE_UUID.lower() in service_uuids or "picpak" in name.lower():
+            matches_uuid = SERVICE_UUID.lower() in service_uuids
+            matches_name = "picpak" in name.lower()
+            _LOGGER.debug(
+                "picpak scan candidate: address=%s name=%r rssi=%s uuids=%s → match(uuid=%s name=%s)",
+                info.address, name, info.rssi, sorted(service_uuids),
+                matches_uuid, matches_name,
+            )
+            if matches_uuid or matches_name:
                 results.append({
                     "device_id": info.address,
                     "name": name or "(unnamed)",
                     "rssi": info.rssi,
                 })
+
+        if not results:
+            _LOGGER.warning(
+                "picpak scan: no Picpak match among %d connectable device(s) — "
+                "check that the device is in pairing mode (LED lit) and the HA "
+                "Bluetooth integration sees advertisements",
+                len(service_infos),
+            )
+        else:
+            _LOGGER.info("picpak scan: %d Picpak device(s) matched", len(results))
         self._discovered_devices = results
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
