@@ -9,6 +9,20 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
+# Rootless podman workaround (applied at custom_component import, before HA
+# loads its own bluetooth integration). dbus-fast defaults to sending its own
+# uid in the EXTERNAL auth handshake with the system bus. In rootless podman
+# the container's uid 0 doesn't match the mapped host uid the kernel reports
+# via SO_PEERCRED — dbus rejects with REJECTED:['EXTERNAL']. Setting
+# UID_NOT_SPECIFIED to None makes dbus-fast skip the uid announcement, so
+# dbus falls back to SO_PEERCRED which matches. Fixes HA's own Bluetooth
+# integration AND our own picpak-ble in-process calls in one shot.
+try:
+    import dbus_fast.auth as _dbf_auth
+    _dbf_auth.UID_NOT_SPECIFIED = None
+except ImportError:
+    pass  # dbus-fast not installed yet — the requirement will pull it in
+
 from .const import CONF_DEVICE_ID, DOMAIN, PLATFORMS
 from .coordinator import PicpakCoordinator
 

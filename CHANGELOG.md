@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.12 — 2026-08-03
+
+Restore the rootless-podman dbus-fast auth workaround — this time in the right place.
+
+### Why
+
+v0.1.11 diagnostic proved that HA's central Bluetooth scanner sees 0 devices, and a direct `podman exec homeassistant python3 -c "…BleakScanner.discover…"` fails with `AuthError: REJECTED:['EXTERNAL']`. Same root cause as v0.1.4 : rootless podman + dbus. Removed in v0.1.5 on the assumption it wasn't useful, which was right for the subprocess CLI (never fired there) but wrong for the in-process path introduced in v0.1.7 — that IS where it needs to fire.
+
+### Changed
+
+- Module-level `dbus_fast.auth.UID_NOT_SPECIFIED = None` at import time in `__init__.py`. HA imports the custom_component before it loads its Bluetooth integration, so the patch takes effect early enough to fix HA's own bluetooth stack AND our picpak-ble in-process calls.
+
+### Removed
+
+- Nothing from v0.1.11 — the `connectable=False` scan superset stays, still useful for detection via ESPHome BLE proxies.
+
 ## 0.1.11 — 2026-08-03
 
 Widen the scan to include advertising-only devices (not just connectable ones).
