@@ -23,12 +23,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Setup une entry picpak : coordinator, device_info, platforms, services."""
     coordinator = PicpakCoordinator(hass, entry)
 
-    # First refresh — récupère l'état initial + lève l'entry si BLE injoignable
     await coordinator.async_config_entry_first_refresh()
 
-    # Récupère et enregistre les infos statiques (versions HW/SW, serial) — best effort
     try:
-        info = await hass.async_add_executor_job(coordinator.client.info)
+        info = await coordinator.client.info()
     except Exception as exc:  # pragma: no cover — best effort
         _LOGGER.warning("picpak info failed on setup: %s", exc)
         info = {}
@@ -60,7 +58,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
-            # dernier device → on peut désenregistrer les services
             for svc in ("push_image", "display_slot", "clear_display", "erase_slot"):
                 if hass.services.has_service(DOMAIN, svc):
                     hass.services.async_remove(DOMAIN, svc)
@@ -76,7 +73,7 @@ def _iter_coordinators(hass: HomeAssistant):
 async def _async_register_services(hass: HomeAssistant) -> None:
     """Enregistre les 4 services picpak (idempotent)."""
     if hass.services.has_service(DOMAIN, "push_image"):
-        return  # déjà enregistrés
+        return
 
     async def _push_image(call: ServiceCall) -> None:
         slot_id = call.data["slot_id"]
@@ -84,29 +81,27 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         crop = call.data.get("crop", "smart")
         for coord in _iter_coordinators(hass):
             async with coord._ble_lock:
-                await hass.async_add_executor_job(
-                    lambda: coord.client.upload(source=source, slot_id=slot_id, crop=crop)
-                )
+                await coord.client.upload(source=source, slot_id=slot_id, crop=crop)
             await coord.async_request_refresh()
 
     async def _display_slot(call: ServiceCall) -> None:
         slot_id = call.data["slot_id"]
         for coord in _iter_coordinators(hass):
             async with coord._ble_lock:
-                await hass.async_add_executor_job(coord.client.display, slot_id)
+                await coord.client.display(slot_id)
             await coord.async_request_refresh()
 
     async def _clear_display(call: ServiceCall) -> None:
         for coord in _iter_coordinators(hass):
             async with coord._ble_lock:
-                await hass.async_add_executor_job(coord.client.clear_display)
+                await coord.client.clear_display()
             await coord.async_request_refresh()
 
     async def _erase_slot(call: ServiceCall) -> None:
         slot_id = call.data["slot_id"]
         for coord in _iter_coordinators(hass):
             async with coord._ble_lock:
-                await hass.async_add_executor_job(coord.client.erase, slot_id)
+                await coord.client.erase(slot_id)
             await coord.async_request_refresh()
 
     slot_schema = vol.Schema({

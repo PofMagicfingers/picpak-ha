@@ -1,182 +1,189 @@
-"""Wrapper subprocess du CLI `picpak` externe (paquet akx/picpak-ble).
+"""Wrapper async in-process autour de la lib `picpak_ble` (module `picpak`).
 
-Cette couche encapsule les appels CLI et retourne des dicts Python typés.
-Elle ne dépend d'aucun module Home Assistant — elle est testable en isolation.
+Remplace l'ancien wrapper subprocess : plus de spawn du binaire `picpak`,
+plus de parse text, plus de dbus REJECTED côté subprocess. Tout tourne
+dans le process HA principal.
 """
 from __future__ import annotations
 
-import json
-import subprocess
-import tempfile
+import asyncio
+import io
+import logging
 import urllib.request
-from pathlib import Path
 from typing import Any
 
-from .const import DEFAULT_CLI_TIMEOUT_SECONDS, SLOT_MIN, SLOT_MAX, VALID_CROPS
+from bleak import BleakScanner
+from picpak.client import PicPakClient, PicPakError
+from picpak.consts import PERCEPTUAL_RETENTION, PERCEPTUAL_TONE
+from picpak.image.consts import DEFAULT_DITHER, DEFAULT_RESCUE
+from picpak.image.image import encode_rgb_image
+from picpak.protocol import SERVICE_UUID
+from PIL import Image
+
+from .const import DEFAULT_CLI_TIMEOUT_SECONDS, SLOT_MAX, SLOT_MIN, VALID_CROPS
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class PicpakClientError(Exception):
-    """Erreur levée par PicpakClient (CLI absent, returncode ≠ 0, sortie non parsable)."""
-
-    def __init__(self, message: str, returncode: int | None = None, stderr: str = ""):
-        super().__init__(message)
-        self.returncode = returncode
-        self.stderr = stderr
+    """Erreur remontée par PicpakClient (BLE, encoding, download URL)."""
 
 
 class PicpakClient:
-    """Wrapper subprocess du CLI `picpak`.
+    """Wrapper async in-process autour de picpak_ble.PicPakClient.
+
+    Chaque méthode ouvre une connexion BLE fresh, exécute son op, ferme.
+    Le lock BLE (une seule op à la fois par device) est géré à l'étage
+    au-dessus par le coordinator via `asyncio.Lock`.
 
     Args:
-        device_id: identifiant BLE du device (MAC address ou nom).
-        cli_binary: nom ou chemin du binaire (défaut "picpak").
+        device_id: MAC address BLE du device.
+        timeout: timeout par op (secondes).
     """
 
-    def __init__(self, device_id: str, cli_binary: str = "picpak") -> None:
+    def __init__(self, device_id: str, timeout: float = DEFAULT_CLI_TIMEOUT_SECONDS) -> None:
         self._device_id = device_id
-        self._cli = cli_binary
+        self._timeout = timeout
 
-    def _run(self, subcommand: str, *args: str, timeout: int = DEFAULT_CLI_TIMEOUT_SECONDS) -> str:
-        """Exécute `picpak <subcommand> --device <id> --json [args]`, retourne stdout."""
-        cmd = [self._cli, subcommand, "--device", self._device_id, "--json", *args]
+    def _client(self) -> PicPakClient:
+        return PicPakClient(self._device_id, timeout=self._timeout)
+
+    async def status(self) -> dict[str, Any]:
+        """État courant : slot actif, batterie, nb images, intervalle, flag door."""
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-            )
-        except FileNotFoundError as exc:
-            raise PicpakClientError(f"CLI '{self._cli}' introuvable — vérifie l'installation") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise PicpakClientError(f"CLI '{self._cli} {subcommand}' timeout après {timeout}s") from exc
+            async with self._client() as client:
+                display_status = await client.display_status()
+                device_info = await client.device_info()
+                configuration = await client.configuration()
+        except PicPakError as exc:
+            raise PicpakClientError(f"status BLE failed: {exc}") from exc
+        return {
+            "current_slot_id": display_status.active_image_id,
+            "battery": device_info.battery,
+            "images_stored": device_info.image_count,
+            "refresh_interval": configuration.refresh_interval,
+            "open_door_refresh": configuration.open_door_refresh,
+        }
 
-        if result.returncode != 0:
-            raise PicpakClientError(
-                f"CLI '{subcommand}' returncode={result.returncode}",
-                returncode=result.returncode,
-                stderr=result.stderr,
-            )
-        return result.stdout
-
-    def status(self) -> dict[str, Any]:
-        """Retourne l'état courant du device : slot actif, batterie, nb images, intervalle, flag door."""
-        stdout = self._run("status")
+    async def info(self) -> dict[str, Any]:
+        """Infos statiques du device (versions HW/SW, serial, model)."""
         try:
-            return json.loads(stdout)
-        except json.JSONDecodeError as exc:
-            raise PicpakClientError(f"status: sortie CLI non-JSON: {stdout[:200]}") from exc
+            async with self._client() as client:
+                device_info = await client.device_info()
+                name = await client.device_name()
+        except PicPakError as exc:
+            raise PicpakClientError(f"info BLE failed: {exc}") from exc
+        return {
+            "model": "PicPak",
+            "name": name,
+            "sw_version": device_info.software_version,
+            "hw_version": device_info.hardware_version,
+            "serial_number": device_info.serial,
+        }
 
-    def info(self) -> dict[str, Any]:
-        """Retourne les infos statiques du device (versions HW/SW, serial, model)."""
-        stdout = self._run("info")
-        try:
-            return json.loads(stdout)
-        except json.JSONDecodeError as exc:
-            raise PicpakClientError(f"info: sortie CLI non-JSON: {stdout[:200]}") from exc
-
-    def download_slot(self, slot_id: int) -> bytes:
-        """Télécharge l'image du slot spécifié depuis le device. Retourne les bytes PNG."""
+    async def download_slot(self, slot_id: int) -> bytes:
+        """Télécharge et vérifie MD5 l'image encodée du slot depuis le device."""
         if not (SLOT_MIN <= slot_id <= SLOT_MAX):
             raise ValueError(f"slot_id {slot_id} hors range {SLOT_MIN}-{SLOT_MAX}")
-
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            tmp_path = Path(tmp.name)
         try:
-            self._run("download", str(slot_id), "--output", str(tmp_path))
-            try:
-                return tmp_path.read_bytes()
-            except OSError as exc:
-                raise PicpakClientError(
-                    f"download_slot({slot_id}): fichier tempfile absent après succès CLI: {exc}"
-                ) from exc
-        finally:
-            tmp_path.unlink(missing_ok=True)
+            async with self._client() as client:
+                return await client.read_image(slot_id)
+        except PicPakError as exc:
+            raise PicpakClientError(f"download_slot({slot_id}) BLE failed: {exc}") from exc
 
-    def upload(self, source: str | Path, slot_id: int, crop: str = "smart") -> None:
-        """Upload une image (path local ou URL) dans le slot spécifié et l'affiche.
-
-        Utilise l'option --overwrite pour remplacer sans confirmation.
-        """
+    async def upload(self, source: str, slot_id: int, crop: str = "smart") -> None:
+        """Charge une image (path local ou URL) → encode → upload dans le slot."""
         if not (SLOT_MIN <= slot_id <= SLOT_MAX):
             raise ValueError(f"slot_id {slot_id} hors range {SLOT_MIN}-{SLOT_MAX}")
         if crop not in VALID_CROPS:
             raise ValueError(f"crop {crop!r} invalide, attendu {VALID_CROPS}")
 
-        source_str = str(source)
-        tmp_downloaded: Path | None = None
+        raw = await asyncio.to_thread(self._load_source_bytes, source)
+        encoded = await asyncio.to_thread(self._encode_bytes, raw, crop)
 
         try:
-            if source_str.startswith(("http://", "https://")):
-                # Télécharger dans un tempfile
-                with tempfile.NamedTemporaryFile(suffix=".img", delete=False) as tmp:
-                    tmp_downloaded = Path(tmp.name)
-                try:
-                    with urllib.request.urlopen(source_str, timeout=DEFAULT_CLI_TIMEOUT_SECONDS) as resp:
-                        tmp_downloaded.write_bytes(resp.read())
-                except Exception as exc:
-                    raise PicpakClientError(f"upload: download URL échoué: {exc}") from exc
-                actual_source = tmp_downloaded
-            else:
-                actual_source = Path(source_str)
-                if not actual_source.exists():
-                    raise PicpakClientError(f"upload: source introuvable: {source_str}")
+            async with self._client() as client:
+                await client.upload(slot_id, encoded, occupied=True)
+        except PicPakError as exc:
+            raise PicpakClientError(f"upload({slot_id}) BLE failed: {exc}") from exc
 
-            self._run(
-                "upload",
-                str(actual_source),
-                "--start-slot", str(slot_id),
-                "--overwrite",
-                "--crop", crop,
-            )
-        finally:
-            if tmp_downloaded is not None:
-                tmp_downloaded.unlink(missing_ok=True)
+    @staticmethod
+    def _load_source_bytes(source: str) -> bytes:
+        if source.startswith(("http://", "https://")):
+            try:
+                with urllib.request.urlopen(source, timeout=DEFAULT_CLI_TIMEOUT_SECONDS) as resp:
+                    return resp.read()
+            except Exception as exc:
+                raise PicpakClientError(f"upload: download URL échoué: {exc}") from exc
+        try:
+            with open(source, "rb") as f:
+                return f.read()
+        except OSError as exc:
+            raise PicpakClientError(f"upload: source introuvable: {source}") from exc
 
-    def display(self, slot_id: int) -> None:
+    @staticmethod
+    def _encode_bytes(raw: bytes, crop: str) -> bytes:
+        try:
+            with Image.open(io.BytesIO(raw)) as img:
+                return encode_rgb_image(
+                    img,
+                    dither=DEFAULT_DITHER,
+                    tone=PERCEPTUAL_TONE,
+                    retention=PERCEPTUAL_RETENTION,
+                    crop=crop,
+                    rescue=DEFAULT_RESCUE,
+                )
+        except Exception as exc:
+            raise PicpakClientError(f"upload: encoding échoué: {exc}") from exc
+
+    async def display(self, slot_id: int) -> None:
         """Bascule l'affichage sur le slot spécifié (sans re-upload)."""
         if not (SLOT_MIN <= slot_id <= SLOT_MAX):
             raise ValueError(f"slot_id {slot_id} hors range {SLOT_MIN}-{SLOT_MAX}")
-        self._run("display", str(slot_id))
+        try:
+            async with self._client() as client:
+                await client.display(slot_id)
+        except PicPakError as exc:
+            raise PicpakClientError(f"display({slot_id}) BLE failed: {exc}") from exc
 
-    def clear_display(self) -> None:
-        """Efface l'affichage — le device passe en état neutre."""
-        self._run("clear")
+    async def clear_display(self) -> None:
+        """Efface l'affichage — le device passe en état neutre.
 
-    def erase(self, slot_id: int) -> None:
+        Le protocole n'expose pas de commande dédiée "clear" ; on affiche
+        le slot 0 par convention (vide par défaut / réservé).
+        """
+        try:
+            async with self._client() as client:
+                await client.display(0)
+        except PicPakError as exc:
+            raise PicpakClientError(f"clear_display BLE failed: {exc}") from exc
+
+    async def erase(self, slot_id: int) -> None:
         """Libère le slot spécifié."""
         if not (SLOT_MIN <= slot_id <= SLOT_MAX):
             raise ValueError(f"slot_id {slot_id} hors range {SLOT_MIN}-{SLOT_MAX}")
-        self._run("erase", str(slot_id))
+        try:
+            async with self._client() as client:
+                await client.erase(slot_id)
+        except PicPakError as exc:
+            raise PicpakClientError(f"erase({slot_id}) BLE failed: {exc}") from exc
 
     @staticmethod
-    def scan(cli_binary: str = "picpak", timeout: int = 10) -> list[dict[str, Any]]:
+    async def scan(timeout: float = 10.0) -> list[dict[str, Any]]:
         """Scan BLE pour trouver les devices Picpak à proximité.
 
-        Retourne une liste de dicts avec 'device_id', 'name', 'rssi'.
+        Retourne une liste de dicts {device_id, name, rssi} filtrée sur le
+        SERVICE_UUID Picpak ou le nom contenant "picpak" (insensible à la casse).
         """
-        cmd = [cli_binary, "scan", "--json", "--timeout", str(timeout)]
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout + 5,  # marge par rapport au CLI
-                check=False,
-            )
-        except FileNotFoundError as exc:
-            raise PicpakClientError(f"CLI '{cli_binary}' introuvable — vérifie l'installation") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise PicpakClientError(f"CLI '{cli_binary} scan' timeout après {timeout + 5}s") from exc
-
-        if result.returncode != 0:
-            raise PicpakClientError(
-                f"scan returncode={result.returncode}",
-                returncode=result.returncode,
-                stderr=result.stderr,
-            )
-        try:
-            return json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            raise PicpakClientError(f"scan: sortie CLI non-JSON: {result.stdout[:200]}") from exc
+        discovered = await BleakScanner.discover(timeout=timeout, return_adv=True)
+        results: list[dict[str, Any]] = []
+        for device, advertisement in discovered.values():
+            name = device.name or advertisement.local_name or ""
+            service_uuids = {u.lower() for u in advertisement.service_uuids}
+            if SERVICE_UUID in service_uuids or "picpak" in name.lower():
+                results.append({
+                    "device_id": device.address,
+                    "name": name or "(unnamed)",
+                    "rssi": advertisement.rssi,
+                })
+        return results

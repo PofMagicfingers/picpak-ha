@@ -10,13 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import (
-    CONF_CLI_BINARY,
-    CONF_DEVICE_ID,
-    DEFAULT_CLI_BINARY,
-    DEFAULT_UPDATE_INTERVAL_SECONDS,
-    DOMAIN,
-)
+from .const import CONF_DEVICE_ID, DEFAULT_UPDATE_INTERVAL_SECONDS, DOMAIN
 from .picpak_client import PicpakClient, PicpakClientError
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,10 +21,7 @@ class PicpakCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
-        self.client = PicpakClient(
-            device_id=entry.data[CONF_DEVICE_ID],
-            cli_binary=entry.data.get(CONF_CLI_BINARY, DEFAULT_CLI_BINARY),
-        )
+        self.client = PicpakClient(device_id=entry.data[CONF_DEVICE_ID])
         self._ble_lock = asyncio.Lock()
         self._cached_slot_id: int | None = None
         self._cached_image_bytes: bytes | None = None
@@ -46,11 +37,10 @@ class PicpakCoordinator(DataUpdateCoordinator):
         """Poll status. Si slot changé, download nouvelle image. Sinon garde le cache."""
         async with self._ble_lock:
             try:
-                status = await self.hass.async_add_executor_job(self.client.status)
+                status = await self.client.status()
             except PicpakClientError as exc:
                 raise UpdateFailed(f"picpak status failed: {exc}") from exc
 
-            # Extraire les clés requises une fois, avec validation
             try:
                 current_slot = status["current_slot_id"]
                 battery = status["battery"]
@@ -62,9 +52,7 @@ class PicpakCoordinator(DataUpdateCoordinator):
 
             if current_slot != self._cached_slot_id:
                 try:
-                    new_image = await self.hass.async_add_executor_job(
-                        self.client.download_slot, current_slot
-                    )
+                    new_image = await self.client.download_slot(current_slot)
                     self._cached_image_bytes = new_image
                     self._cached_slot_id = current_slot
                 except PicpakClientError as exc:
@@ -72,7 +60,6 @@ class PicpakCoordinator(DataUpdateCoordinator):
                         "picpak download_slot(%s) failed: %s — keeping previous image cache",
                         current_slot, exc,
                     )
-                    # on garde _cached_image_bytes et _cached_slot_id inchangés
 
         return {
             "current_slot_id": current_slot,

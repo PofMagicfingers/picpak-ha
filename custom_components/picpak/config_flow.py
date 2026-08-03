@@ -10,7 +10,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
 
 from .const import CONF_DEVICE_ID, DOMAIN
-from .picpak_client import PicpakClient, PicpakClientError
+from .picpak_client import PicpakClient
 
 
 class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -24,10 +24,8 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _run_scan(self) -> None:
         try:
-            self._discovered_devices = await self.hass.async_add_executor_job(
-                PicpakClient.scan
-            )
-        except PicpakClientError:
+            self._discovered_devices = await PicpakClient.scan()
+        except Exception:
             self._discovered_devices = []
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:

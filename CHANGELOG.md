@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.7 — 2026-08-03
+
+Big refactor: use `picpak-ble` as an in-process async library instead of shelling out to its CLI.
+
+### Why
+
+The previous `PicpakClient` was a subprocess wrapper that passed `--json` to every `picpak <cmd>` invocation, assuming JSON output. **The CLI never had a `--json` option** — every command outputs plain text. That whole wrapper was based on an imagined API and would have failed on every call. Reported on first hardware test of v0.1.5 (`podman exec -it homeassistant picpak scan --json` → `Error: No such option: --json`).
+
+### Changed
+
+- `PicpakClient` now wraps `picpak.client.PicPakClient` (the actual library) with async methods. No more `subprocess.run`, no more text parsing.
+- `scan()` calls `bleak.BleakScanner.discover` directly and filters by SERVICE_UUID or name — no CLI hop.
+- `upload()` loads the source (path or URL), opens with PIL, encodes via `picpak.image.encode_rgb_image` in a worker thread, then uploads via BLE.
+- `coordinator.py` drops all `hass.async_add_executor_job` — everything is async-native now.
+- Services (`push_image`, `display_slot`, `clear_display`, `erase_slot`) call the client's async methods directly.
+- Fixed side effect: the BLE dbus REJECTED issue (rootless podman + subprocess) is no longer relevant — all BLE calls happen in the main HA process, which already has its own dbus-fast setup working.
+
+### Requirements
+
+- `picpak-ble[client,image]` (was `picpak-ble[cli]`). No more `click`/`tqdm` pulled in; only `bleak` and `Pillow`.
+
+### Removed
+
+- `CONF_CLI_BINARY` / `DEFAULT_CLI_BINARY` constants — no CLI binary to point to anymore.
+
 ## 0.1.6 — 2026-08-03
 
 Better UX when no Picpak device is detected during scan (instead of jumping straight to manual MAC entry).
