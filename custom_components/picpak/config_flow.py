@@ -1,16 +1,17 @@
-"""ConfigFlow pour l'intégration picpak (scan BLE + relance + fallback manuel)."""
+"""ConfigFlow pour l'intégration picpak (scan BLE via HA bluetooth central + fallback manuel)."""
 from __future__ import annotations
 
 import re
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
+from picpak.protocol import SERVICE_UUID
 
 from .const import CONF_DEVICE_ID, DOMAIN
-from .picpak_client import PicpakClient
 
 
 class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -23,10 +24,32 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered_devices: list[dict[str, Any]] = []
 
     async def _run_scan(self) -> None:
+        """Lit le cache du scanner Bluetooth central HA — pas de scan externe.
+
+        Sur HAOS/container, l'adaptateur BT est owned par l'intégration
+        Bluetooth officielle qui scanne en permanence. Un `BleakScanner.discover`
+        externe entre en conflit et rate. `async_discovered_service_info` lit
+        directement le cache du scan central.
+        """
+        results: list[dict[str, Any]] = []
         try:
-            self._discovered_devices = await PicpakClient.scan()
+            service_infos = bluetooth.async_discovered_service_info(
+                self.hass, connectable=True
+            )
         except Exception:
             self._discovered_devices = []
+            return
+
+        for info in service_infos:
+            name = info.name or ""
+            service_uuids = {u.lower() for u in (info.service_uuids or [])}
+            if SERVICE_UUID.lower() in service_uuids or "picpak" in name.lower():
+                results.append({
+                    "device_id": info.address,
+                    "name": name or "(unnamed)",
+                    "rssi": info.rssi,
+                })
+        self._discovered_devices = results
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Étape scan : liste les devices BLE + sélection."""
@@ -44,9 +67,6 @@ class PicpakConfigFlow(ConfigFlow, domain=DOMAIN):
         await self._run_scan()
 
         if not self._discovered_devices:
-            # Aucun device détecté — l'utilisateur n'a probablement pas
-            # activé le mode advertising sur son device (appui 3s bouton).
-            # On propose de rescanner après manip, ou de saisir le MAC en direct.
             return await self.async_step_no_devices()
 
         schema = vol.Schema({

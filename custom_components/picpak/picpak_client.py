@@ -12,12 +12,10 @@ import logging
 import urllib.request
 from typing import Any
 
-from bleak import BleakScanner
 from picpak.client import PicPakClient, PicPakError
 from picpak.consts import PERCEPTUAL_RETENTION, PERCEPTUAL_TONE
 from picpak.image.consts import DEFAULT_DITHER, DEFAULT_RESCUE
 from picpak.image.image import encode_rgb_image
-from picpak.protocol import SERVICE_UUID
 from PIL import Image
 
 from .const import DEFAULT_CLI_TIMEOUT_SECONDS, SLOT_MAX, SLOT_MIN, VALID_CROPS
@@ -168,22 +166,3 @@ class PicpakClient:
         except PicPakError as exc:
             raise PicpakClientError(f"erase({slot_id}) BLE failed: {exc}") from exc
 
-    @staticmethod
-    async def scan(timeout: float = 10.0) -> list[dict[str, Any]]:
-        """Scan BLE pour trouver les devices Picpak à proximité.
-
-        Retourne une liste de dicts {device_id, name, rssi} filtrée sur le
-        SERVICE_UUID Picpak ou le nom contenant "picpak" (insensible à la casse).
-        """
-        discovered = await BleakScanner.discover(timeout=timeout, return_adv=True)
-        results: list[dict[str, Any]] = []
-        for device, advertisement in discovered.values():
-            name = device.name or advertisement.local_name or ""
-            service_uuids = {u.lower() for u in advertisement.service_uuids}
-            if SERVICE_UUID in service_uuids or "picpak" in name.lower():
-                results.append({
-                    "device_id": device.address,
-                    "name": name or "(unnamed)",
-                    "rssi": advertisement.rssi,
-                })
-        return results

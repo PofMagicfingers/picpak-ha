@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.9 — 2026-08-03
+
+Fix scan: read HA's central Bluetooth scanner cache instead of racing it with an ad-hoc `BleakScanner.discover`.
+
+### Why
+
+On HAOS / HA container, the Bluetooth adapter is owned by the official Bluetooth integration which scans permanently. Calling `BleakScanner.discover()` from a custom_component either finds nothing or fights the central scanner for adapter access. Reported on real hardware in v0.1.7: PicPak in "Waiting for pairing" (LED lit, actively advertising) → HA config flow scan returns empty.
+
+### Changed
+
+- `config_flow._run_scan` now uses `homeassistant.components.bluetooth.async_discovered_service_info(hass, connectable=True)` — reads the cache maintained by HA's central Bluetooth scanner instead of starting its own.
+- Filters kept identical: matches on Picpak SERVICE_UUID or a name containing "picpak" (case-insensitive).
+- Static `PicpakClient.scan()` method removed — no longer needed, and it was the wrong approach anyway.
+
 ## 0.1.8 — 2026-08-03
 
 Docs — version badge at top of README + doc alignment with the v0.1.7 refactor.
