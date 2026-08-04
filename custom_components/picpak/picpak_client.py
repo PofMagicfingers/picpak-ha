@@ -253,29 +253,3 @@ class PicpakClient:
             if client.is_connected:
                 await client.disconnect()
 
-    async def pair(self) -> None:
-        """Pair BLE persistant (bonding) avec le device via BlueZ.
-
-        À appeler UNE FOIS après avoir mis le device en mode pairing (appui 3s).
-        Ensuite le device reste bondé côté BlueZ et est réveillable via
-        `bleak_retry_connector.establish_connection` sans nouveau press physique
-        — utile pour un cadre photo qui passe 99% du temps en demi-sommeil.
-
-        Idempotent : BlueZ `is_paired()` court-circuite si déjà pairé.
-        """
-        client = await self._connect_client()
-        try:
-            _LOGGER.warning(
-                "picpak: initiating BLE pairing (bonding) with %s — device must be "
-                "in pairing mode (press 3s, LED lit)",
-                self._device_id,
-            )
-            await client.pair()
-            _LOGGER.warning("picpak: pairing successful with %s", self._device_id)
-        except Exception as exc:
-            raise PicpakClientError(
-                f"pair({self._device_id}) BLE failed: {exc}"
-            ) from exc
-        finally:
-            if client.is_connected:
-                await client.disconnect()

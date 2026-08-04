@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.21 — 2026-08-04
+
+Abandon of the BLE bonding approach — the Picpak firmware refuses SMP handshake.
+
+### Why
+
+v0.1.19 → v0.1.20 tried to persist a BLE bond via `bleak.pair()` / BlueZ SMP so the device could be woken from deep sleep without a physical press. Reality: on the Picpak firmware, `client.pair()` **systematically returns `[org.bluez.Error.AuthenticationCanceled] Authentication Canceled` after 30s** regardless of pairing window timing. The device screen says "Waiting for pairing" but that's an advertising state, not a real SMP handshake. Bonding is a dead-end for this firmware.
+
+### Removed
+
+- Auto-pair loop in `async_setup_entry` (3 attempts × 10s + `ConfigEntryNotReady` on failure)
+- `PicpakClient.pair()` method
+- `picpak.pair_device` service (from `__init__.py` and `services.yaml`)
+
+### Kept
+
+- `_acquire_mtu()` explicit call in `picpak_client._connect_client` after `establish_connection` — this remains useful and may resolve the "MTU 23 too small" error on `push_image` without needing a bond, provided the device doesn't require encryption for AcquireNotify.
+
+### Current UX limit
+
+Without a persistent bond, the device must be in pairing mode (3s press, LED lit) for **every** BLE operation (status refresh, push_image, etc). This is a firmware limitation, not the integration's. Documented plainly rather than papered over.
+
 ## 0.1.20 — 2026-08-04
 
 Setup entry fails loudly if pairing doesn't succeed + explicit MTU negotiation on every connect.

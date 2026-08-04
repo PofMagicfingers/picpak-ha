@@ -1,13 +1,11 @@
 """Picpak custom component for Home Assistant."""
 from __future__ import annotations
 
-import asyncio
 import logging
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
@@ -24,35 +22,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Setup une entry picpak : coordinator, device_info, platforms, services.
 
-    Tente un bond BLE auto avec retry si le device est en pairing mode. Si
-    tous les retries échouent, l'entry est marquée non prête via
-    ConfigEntryNotReady — HA re-tentera le setup automatiquement et affichera
-    un état d'erreur clair à l'user. Pas de warning silencieux qui laisserait
-    l'intégration dans un état bâtard (MTU 23, connexions cassées).
+    Le pair BLE via BlueZ ne fonctionne pas avec le firmware Picpak — il
+    remonte systématiquement `AuthenticationCanceled` en 30s, indiquant que
+    le device refuse le handshake SMP formel. On se contente de la connexion
+    directe (bleak_retry_connector + _acquire_mtu explicite). Le device doit
+    être en pairing mode (LED bleue) à chaque nouvelle op BLE — c'est une
+    limite du firmware, pas de mon code.
     """
     coordinator = PicpakCoordinator(hass, entry)
-
-    last_error: Exception | None = None
-    for attempt in range(1, 4):
-        try:
-            await coordinator.client.pair()
-            _LOGGER.info("picpak: BLE bond established at setup (attempt %d/3)", attempt)
-            break
-        except Exception as exc:
-            last_error = exc
-            _LOGGER.info(
-                "picpak: bond attempt %d/3 failed (%s) — retrying in 10s",
-                attempt, exc,
-            )
-            if attempt < 3:
-                await asyncio.sleep(10)
-    else:
-        raise ConfigEntryNotReady(
-            f"Impossible d'appairer le Picpak {entry.data[CONF_DEVICE_ID]} après 3 tentatives. "
-            f"Mets le device en mode pairing (appui 3s sur le bouton, LED bleue, "
-            f"écran 'Waiting for pairing') et Home Assistant réessaiera automatiquement. "
-            f"Dernière erreur : {last_error}"
-        )
 
     await coordinator.async_config_entry_first_refresh()
 
@@ -89,7 +66,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
-            for svc in ("push_image", "display_slot", "clear_display", "erase_slot", "pair_device"):
+            for svc in ("push_image", "display_slot", "clear_display", "erase_slot"):
                 if hass.services.has_service(DOMAIN, svc):
                     hass.services.async_remove(DOMAIN, svc)
     return unload_ok
@@ -135,11 +112,6 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 await coord.client.erase(slot_id)
             await coord.async_request_refresh()
 
-    async def _pair_device(call: ServiceCall) -> None:
-        for coord in _iter_coordinators(hass):
-            async with coord._ble_lock:
-                await coord.client.pair()
-
     slot_schema = vol.Schema({
         vol.Required("slot_id"): vol.All(vol.Coerce(int), vol.Range(min=1, max=500)),
     })
@@ -157,4 +129,3 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, "display_slot", _display_slot, schema=slot_schema)
     hass.services.async_register(DOMAIN, "clear_display", _clear_display, schema=vol.Schema({}))
     hass.services.async_register(DOMAIN, "erase_slot", _erase_slot, schema=slot_schema)
-    hass.services.async_register(DOMAIN, "pair_device", _pair_device, schema=vol.Schema({}))
