@@ -1,6 +1,6 @@
 # Picpak — Home Assistant custom component
 
-**Current version: 0.1.15** ([CHANGELOG](CHANGELOG.md)) — 2026-08-04
+**Current version: 0.1.16** ([CHANGELOG](CHANGELOG.md)) — 2026-08-04
 
 Home Assistant integration for [Picpak](https://picpak.tech) e-ink Bluetooth photo frame.
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.16 — 2026-08-04
+
+Use `bleak_retry_connector` for BLE connection establishment — the HA standard for reliable BLE.
+
+### Why
+
+After v0.1.15 first successful scan on real hardware (Pof enabled the HA Bluetooth integration which unblocked discovery), the config entry setup failed with `habluetooth.wrappers` warning:
+
+> `BleakClient.connect() called without bleak-retry-connector. For reliable connection establishment, use bleak_retry_connector.establish_connection().`
+
+`picpak-ble` was creating and connecting its own raw `BleakClient` inside `PicPakClient.__aenter__` — HA's Bluetooth stack requires clients obtained via `bleak_retry_connector.establish_connection()` for retries, cache reuse, and coordination with the central scanner.
+
+### Changed
+
+- `picpak_client.py` now takes `hass` as first constructor arg and, on every BLE operation:
+  1. Resolves the `BLEDevice` via `bluetooth.async_ble_device_from_address(hass, mac, connectable=True)`.
+  2. Establishes a `BleakClientWithServiceCache` via `bleak_retry_connector.establish_connection(..., max_attempts=3)`.
+  3. Injects that connected client into `PicPakClient(mac, client=...)` via the new `client=` kwarg (added in fork commit `deb89d6`).
+  4. Disconnects the client cleanly in `finally`.
+- `coordinator.py` passes `hass` to the client constructor.
+
+### Fork bump
+
+- `picpak-ble` fork pinned to commit `deb89d6` on branch `bleak-lt-4`. The commit adds a `client=` kwarg to `PicPakClient` so callers can inject a pre-connected BleakClient; backward compatible with existing `PicPakClient(mac)` usage.
+
 ## 0.1.15 — 2026-08-04
 
 Write the sitecustomize dbus patch to `/config/picpak-patches/` (persistent volume) instead of site-packages (ephemeral). Requires a one-time container config change.

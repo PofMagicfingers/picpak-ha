@@ -21,7 +21,7 @@ class PicpakCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
-        self.client = PicpakClient(device_id=entry.data[CONF_DEVICE_ID])
+        self.client = PicpakClient(hass, device_id=entry.data[CONF_DEVICE_ID])
         self._ble_lock = asyncio.Lock()
         self._cached_slot_id: int | None = None
         self._cached_image_bytes: bytes | None = None
