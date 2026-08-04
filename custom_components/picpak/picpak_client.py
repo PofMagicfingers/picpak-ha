@@ -52,7 +52,12 @@ class PicpakClient:
         self._timeout = timeout
 
     async def _connect_client(self) -> BleakClientWithServiceCache:
-        """Obtient un BleakClient robuste via HA + bleak_retry_connector."""
+        """Obtient un BleakClient robuste via HA + bleak_retry_connector.
+
+        Négocie la MTU BLE explicitement après connexion (via `_acquire_mtu`
+        du backend BlueZ) — sinon Bleak retombe sur la MTU par défaut de 23,
+        insuffisante pour les chunks upload du picpak (~118 bytes minimum).
+        """
         ble_device = bluetooth.async_ble_device_from_address(
             self._hass, self._device_id, connectable=True
         )
@@ -62,7 +67,7 @@ class PicpakClient:
                 "vérifie que le device est à portée et en mode advertising"
             )
         try:
-            return await establish_connection(
+            client = await establish_connection(
                 BleakClientWithServiceCache,
                 ble_device,
                 f"Picpak-{self._device_id[-8:]}",
@@ -72,6 +77,28 @@ class PicpakClient:
             raise PicpakClientError(
                 f"BLE connect to {self._device_id} failed: {exc}"
             ) from exc
+
+        # Force MTU negotiation post-connect (BlueZ backend uniquement — sur
+        # macOS/Windows la MTU est négociée à l'ATT handshake, la méthode
+        # n'existe pas). Best-effort : si _acquire_mtu échoue, log info et
+        # continue — l'op suivante remontera l'erreur MTU proprement.
+        acquire_mtu = getattr(client, "_acquire_mtu", None)
+        if callable(acquire_mtu):
+            try:
+                await acquire_mtu()
+                _LOGGER.debug(
+                    "picpak: MTU negotiated for %s: %s",
+                    self._device_id,
+                    getattr(client, "mtu_size", "unknown"),
+                )
+            except Exception as exc:
+                _LOGGER.info(
+                    "picpak: MTU negotiation via _acquire_mtu failed for %s (%s) — "
+                    "may cause 'MTU too small' errors on upload if device requires bond",
+                    self._device_id, exc,
+                )
+
+        return client
 
     async def _picpak(self) -> tuple[PicPakClient, BleakClientWithServiceCache]:
         """Instancie PicPakClient avec un BleakClient HA-friendly (retry-connector)."""

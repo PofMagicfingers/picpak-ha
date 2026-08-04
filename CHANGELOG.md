@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.20 — 2026-08-04
+
+Setup entry fails loudly if pairing doesn't succeed + explicit MTU negotiation on every connect.
+
+### Why
+
+v0.1.19 auto-paired but only logged a warning on failure — the integration then continued in a broken state (MTU 23, upload failures) that end-users had no visibility into. Reported by Pof on 2026-08-04: *"Si ça échoue ça échoue. (…) Si ça marche pas on prévient mais on fait pas de fail silencieux qui va donner un état bâtard qui marchera pas"*.
+
+Also: v0.1.18 log showed `[org.bluez.Error.AuthenticationCanceled]` during pair — the pair window was too tight (device left pairing mode before BlueZ could complete the handshake). A retry loop absorbs that timing.
+
+### Changed
+
+- `async_setup_entry` : 3 attempts to `client.pair()` spaced by 10 seconds. If all three fail, raise `ConfigEntryNotReady` — HA marks the entry with a clear error state visible in the UI and auto-retries the setup periodically. No more silent warning-with-broken-state.
+- `picpak_client._connect_client` : calls `client._acquire_mtu()` after `establish_connection` when the backend supports it (BlueZ on Linux). Best-effort — logs `INFO` on failure rather than blocking, since some devices negotiate MTU differently. If the device really needs a bond for encrypted characteristics, subsequent upload calls will raise the proper `MTU too small` error rather than a silent 23-byte MTU.
+
+### Effect
+
+End-user flow becomes: press 3s → scan finds device → validate dropdown → integration attempts pair (retry × 3 over 30s window) → success → MTU auto-negotiated on first connect → uploads work. If pair fails all three times, integration entry appears in HA with a clear error state and instructions to put the device back in pairing mode.
+
 ## 0.1.19 — 2026-08-04
 
 Auto-pair BLE at first setup entry — the end-user shouldn't have to call a service by hand.

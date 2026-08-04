@@ -1,11 +1,13 @@
 """Picpak custom component for Home Assistant."""
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
@@ -20,23 +22,36 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Setup une entry picpak : coordinator, device_info, platforms, services."""
+    """Setup une entry picpak : coordinator, device_info, platforms, services.
+
+    Tente un bond BLE auto avec retry si le device est en pairing mode. Si
+    tous les retries échouent, l'entry est marquée non prête via
+    ConfigEntryNotReady — HA re-tentera le setup automatiquement et affichera
+    un état d'erreur clair à l'user. Pas de warning silencieux qui laisserait
+    l'intégration dans un état bâtard (MTU 23, connexions cassées).
+    """
     coordinator = PicpakCoordinator(hass, entry)
 
-    # Auto-pair BLE au premier setup. Le device sort probablement du config_flow
-    # où l'user vient de le scanner (donc encore en pairing mode LED bleue) —
-    # c'est le meilleur moment pour capturer un bond persistant qui débloquera
-    # le MTU (AcquireNotify des characteristics chiffrées) et permettra le
-    # réveil du device sans nouveau press physique. bleak.pair() est idempotent :
-    # skip silencieusement si device déjà bondé côté BlueZ.
-    try:
-        await coordinator.client.pair()
-    except Exception as exc:  # pragma: no cover — best effort
-        _LOGGER.warning(
-            "picpak: auto-pair at setup failed — device may not be in pairing mode "
-            "(press 3s on the button and call the `picpak.pair_device` service to retry). "
-            "Continuing without a bond, connection may fail or MTU may stay at 23. Error: %s",
-            exc,
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            await coordinator.client.pair()
+            _LOGGER.info("picpak: BLE bond established at setup (attempt %d/3)", attempt)
+            break
+        except Exception as exc:
+            last_error = exc
+            _LOGGER.info(
+                "picpak: bond attempt %d/3 failed (%s) — retrying in 10s",
+                attempt, exc,
+            )
+            if attempt < 3:
+                await asyncio.sleep(10)
+    else:
+        raise ConfigEntryNotReady(
+            f"Impossible d'appairer le Picpak {entry.data[CONF_DEVICE_ID]} après 3 tentatives. "
+            f"Mets le device en mode pairing (appui 3s sur le bouton, LED bleue, "
+            f"écran 'Waiting for pairing') et Home Assistant réessaiera automatiquement. "
+            f"Dernière erreur : {last_error}"
         )
 
     await coordinator.async_config_entry_first_refresh()
