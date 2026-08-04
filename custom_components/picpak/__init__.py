@@ -110,7 +110,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 await coord.client.pair()
 
     slot_schema = vol.Schema({
-        vol.Required("slot_id"): vol.All(vol.Coerce(int), vol.Range(min=0, max=699)),
+        vol.Required("slot_id"): vol.All(vol.Coerce(int), vol.Range(min=1, max=500)),
     })
 
     hass.services.async_register(
@@ -118,7 +118,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         "push_image",
         _push_image,
         schema=vol.Schema({
-            vol.Required("slot_id"): vol.All(vol.Coerce(int), vol.Range(min=0, max=699)),
+            vol.Required("slot_id"): vol.All(vol.Coerce(int), vol.Range(min=1, max=500)),
             vol.Required("source"): cv.string,
             vol.Optional("crop", default="smart"): vol.In(["smart", "center", "letterbox"]),
         }),

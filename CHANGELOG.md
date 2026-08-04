@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.18 — 2026-08-04
+
+Fix slot range: real range is **1..500**, not 0..699.
+
+### Why
+
+`picpak.protocol.slot_id_bytes()` raises `ValueError: slot must be in 1..SLOT_COUNT` where `SLOT_COUNT = 500`. My `const.py` declared `SLOT_MIN=0, SLOT_MAX=699` from day one — invented, never verified against the real lib. Reported by Pof on 2026-08-04 after the first successful push attempt hit `ValueError: slot must be in 1..500`.
+
+Same pattern as the `--json` wrapper: I invented a plausible range instead of `grep`ing `picpak.protocol` for the real one. Feedback memory `lire-source-dependance` applies at yet another scale: not just APIs but **constants** too.
+
+### Changed
+
+- `SLOT_MIN=1`, `SLOT_MAX=500` in `const.py`.
+- `services.yaml` selectors + descriptions: `min: 1`, `max: 500`, "(1-500)".
+- `voluptuous.Range(min=1, max=500)` in service schemas.
+
 ## 0.1.17 — 2026-08-04
 
 New `picpak.pair_device` service for BLE bonding + cleanup of the obsolete dbus-fast monkey-patch and sitecustomize scaffolding.

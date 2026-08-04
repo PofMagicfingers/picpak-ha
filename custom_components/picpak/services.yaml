@@ -4,12 +4,12 @@ push_image:
   fields:
     slot_id:
       name: Slot ID
-      description: Slot cible (0-699)
+      description: Slot cible (1-500)
       required: true
       selector:
         number:
-          min: 0
-          max: 699
+          min: 1
+          max: 500
           mode: box
     source:
       name: Source
@@ -34,12 +34,12 @@ display_slot:
   fields:
     slot_id:
       name: Slot ID
-      description: Slot cible (0-699)
+      description: Slot cible (1-500)
       required: true
       selector:
         number:
-          min: 0
-          max: 699
+          min: 1
+          max: 500
           mode: box
 
 clear_display:
@@ -52,12 +52,12 @@ erase_slot:
   fields:
     slot_id:
       name: Slot ID
-      description: Slot à libérer (0-699)
+      description: Slot à libérer (1-500)
       required: true
       selector:
         number:
-          min: 0
-          max: 699
+          min: 1
+          max: 500
           mode: box
 
 pair_device:
