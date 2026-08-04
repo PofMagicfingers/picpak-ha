@@ -2,11 +2,18 @@
 from __future__ import annotations
 
 import logging
-import site
 import sys
 from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
+
+# Persistent target for the sitecustomize patch. `/config/` is HA's persistent
+# volume; a subdirectory here survives container restarts, unlike the container's
+# site-packages which are ephemeral in HAOS/HACS podman setups. The user must
+# add `-e PYTHONPATH=/config/picpak-patches` to their container config so Python
+# picks up the sitecustomize.py at interpreter startup.
+_PATCH_DIR = Path("/config/picpak-patches")
+_PATCH_FILE = _PATCH_DIR / "sitecustomize.py"
 
 # Rootless podman workaround. dbus-fast defaults to sending its own uid in the
 # EXTERNAL auth handshake with the system bus. In rootless podman the container's
@@ -65,38 +72,44 @@ except ImportError:
 
 
 def _ensure_sitecustomize_patch() -> None:
-    """Write sitecustomize.py in site-packages so Python loads the dbus patch before ANY user import.
+    """Write sitecustomize.py in /config/picpak-patches/ so Python loads the dbus patch before ANY user import.
 
     Python's `site` module loads sitecustomize.py automatically at interpreter
     startup, before any `import` statement in user code runs. Writing our
     monkey-patch there guarantees that dbus_fast.auth.UID_NOT_SPECIFIED is None
     by the time HA (or anything else) imports dbus_fast for the first time.
 
-    Idempotent: the marker is checked before appending. Safe to call every boot.
-    First call has no effect this run (Python interpreter already started without
-    the file); it takes effect at the NEXT container restart.
+    The `/config/` volume is HA's persistent mount, so the patch survives
+    container restarts. The user must set `PYTHONPATH=/config/picpak-patches`
+    on the container so Python picks up our sitecustomize.py at startup.
+
+    Idempotent: the marker is checked before writing. Safe to call every boot.
+    First call has no effect this run (Python interpreter already started
+    without the file); it takes effect at the NEXT container restart.
     """
     try:
-        for sp in site.getsitepackages():
-            sp_path = Path(sp)
-            if not sp_path.is_dir():
-                continue
-            target = sp_path / "sitecustomize.py"
-            existing = target.read_text() if target.exists() else ""
-            if _SITECUSTOMIZE_MARKER in existing:
-                _LOGGER.info("picpak: sitecustomize dbus patch already present at %s", target)
-                return
-            new_content = existing + _SITECUSTOMIZE_PATCH
-            target.write_text(new_content)
-            _LOGGER.warning(
-                "picpak: dbus-fast auth patch written to %s — RESTART THE CONTAINER "
-                "one more time to activate it (this run stays broken)",
-                target,
+        _PATCH_DIR.mkdir(parents=True, exist_ok=True)
+        existing = _PATCH_FILE.read_text() if _PATCH_FILE.exists() else ""
+        if _SITECUSTOMIZE_MARKER in existing:
+            _LOGGER.info(
+                "picpak: sitecustomize dbus patch already present at %s "
+                "(ensure PYTHONPATH=%s is set on the container)",
+                _PATCH_FILE, _PATCH_DIR,
             )
             return
-        _LOGGER.warning("picpak: no writable site-packages found for sitecustomize.py")
+        _PATCH_FILE.write_text(existing + _SITECUSTOMIZE_PATCH)
+        _LOGGER.warning(
+            "picpak: dbus-fast auth patch written to %s. "
+            "Ensure PYTHONPATH=%s is set on the container (e.g. `-e PYTHONPATH=%s` "
+            "in podman/docker run, or `Environment=PYTHONPATH=%s` in a quadlet), "
+            "then RESTART THE CONTAINER — this run stays broken until Python "
+            "picks up the sitecustomize at its next startup.",
+            _PATCH_FILE, _PATCH_DIR, _PATCH_DIR, _PATCH_DIR,
+        )
     except (OSError, PermissionError) as exc:
-        _LOGGER.warning("picpak: could not write sitecustomize.py: %s", exc)
+        _LOGGER.warning(
+            "picpak: could not write sitecustomize.py to %s: %s", _PATCH_FILE, exc,
+        )
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

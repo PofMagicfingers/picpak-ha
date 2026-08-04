@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.1.15 — 2026-08-04
+
+Write the sitecustomize dbus patch to `/config/picpak-patches/` (persistent volume) instead of site-packages (ephemeral). Requires a one-time container config change.
+
+### Why
+
+v0.1.14 wrote `sitecustomize.py` to `/usr/local/lib/python3.14/site-packages/`, which is inside the container image on HAOS/podman setups — every `podman restart` throws it away. Persistent HA config lives under `/config`, which is a volume mount that survives restarts.
+
+Verified on Pof's container that `PYTHONPATH` is not preset by HA (only `UV_SYSTEM_PYTHON=true`), so adding our own dir to it can't collide with anything.
+
+### Changed
+
+- `_ensure_sitecustomize_patch()` writes to `/config/picpak-patches/sitecustomize.py` and `mkdir -p` the directory as needed.
+- WARNING log now spells out the container config the user must add and points to the exact path.
+
+### One-time setup for users
+
+Add to the HA container config (podman/docker run, compose, or quadlet):
+
+```
+-e PYTHONPATH=/config/picpak-patches
+```
+
+Then restart the container. On first install:
+1. **First restart** after adding the env var → the custom_component writes `sitecustomize.py` to `/config/picpak-patches/`, but Python has already started without picking it up. Bluetooth still broken this run.
+2. **Second restart** → Python starts, sees `PYTHONPATH=/config/picpak-patches`, loads our `sitecustomize.py`, patches dbus-fast **before** HA imports it. Bluetooth works.
+
+After the first two restarts, the file is stable and future updates only touch it if the patch content changes.
+
 ## 0.1.14 — 2026-08-03
 
 Real fix for rootless-podman dbus REJECTED: write a `sitecustomize.py` so Python loads the patch before any user import (including HA's bluetooth stack).
