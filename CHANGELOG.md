@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.17 — 2026-08-04
+
+New `picpak.pair_device` service for BLE bonding + cleanup of the obsolete dbus-fast monkey-patch and sitecustomize scaffolding.
+
+### Added
+
+- **Service `picpak.pair_device`** — calls `BleakClient.pair()` via BlueZ to persist a BLE bond with the device. To be called once after putting the device in pairing mode (3s button press). Once bonded, `bleak_retry_connector.establish_connection` can wake the device from its deep-sleep cycle without needing another physical button press — essential for a e-paper photo frame that's in half-sleep 99% of the time.
+
+### Removed
+
+- Module-level `dbus_fast.auth.UID_NOT_SPECIFIED = None` monkey-patch from `__init__.py`. The proper fix for rootless-podman dbus is at the container level — either the HA official recipe (`cap_add: NET_ADMIN NET_RAW` + `-v /run/dbus:/run/dbus:ro`, with SELinux permissions if enforce) or a filtered `xdg-dbus-proxy` mounted at `/run/dbus/system_bus_socket`. Both are documented at [Home Assistant Bluetooth container details](https://www.home-assistant.io/integrations/bluetooth/#additional-details-for-container).
+- `_ensure_sitecustomize_patch()` helper and its `async_setup()` invocation. The `/config/picpak-patches/sitecustomize.py` was a workaround for the same dbus issue; unnecessary once the container is configured properly. Users can safely delete `/config/picpak-patches/` and the `PYTHONPATH=/config/picpak-patches` environment variable from their container config.
+
+### Why
+
+Three days of monkey-patches (v0.1.4 → v0.1.15) were built on top of the rootless-podman dbus REJECTED issue while the fix was documented officially by Home Assistant. Reported by Pof on 2026-08-04 with a pointer to the docs. See feedback memory `lire-source-dependance` (elaborated to cover "read the hosting system's official docs before patching an infra issue", not just the library being wrapped).
+
 ## 0.1.16 — 2026-08-04
 
 Use `bleak_retry_connector` for BLE connection establishment — the HA standard for reliable BLE.

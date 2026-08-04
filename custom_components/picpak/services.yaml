@@ -59,3 +59,12 @@ erase_slot:
           min: 0
           max: 699
           mode: box
+
+pair_device:
+  name: Pair device (BLE bonding)
+  description: >-
+    Initie un pairing BLE persistant avec le device via BlueZ. Le device doit
+    être en mode pairing (appui 3s sur le bouton, LED bleue, écran "Waiting for
+    pairing"). À appeler UNE FOIS — ensuite le device reste bondé côté host et
+    est réveillable via bleak_retry_connector sans nouveau press physique.
+    Utile pour un cadre photo qui passe 99% du temps en demi-sommeil.
