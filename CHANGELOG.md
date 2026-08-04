@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.19 — 2026-08-04
+
+Auto-pair BLE at first setup entry — the end-user shouldn't have to call a service by hand.
+
+### Why
+
+v0.1.17 introduced the `picpak.pair_device` service as an explicit opt-in step. Reported by Pof on 2026-08-04: *"end-user won't go call a service by hand"*. Fair — the moment where the device is guaranteed to be in pairing mode is right after the user has scanned it and confirmed the dropdown in the config flow. That's when the bond should happen automatically.
+
+### Changed
+
+- `async_setup_entry` now attempts `coordinator.client.pair()` at the very first setup, before the first data refresh. Failures are non-fatal (warning logged, setup continues) — the `picpak.pair_device` service remains as a manual retry option if the auto-pair misses the pairing window.
+
+### Effect
+
+End-user flow becomes: press 3s on device → scan finds it → validate dropdown → integration attempts pair immediately while device is still in pairing mode → bond enregistré → MTU can be negotiated → subsequent BLE ops work without new physical press.
+
 ## 0.1.18 — 2026-08-04
 
 Fix slot range: real range is **1..500**, not 0..699.

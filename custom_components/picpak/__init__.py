@@ -23,6 +23,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Setup une entry picpak : coordinator, device_info, platforms, services."""
     coordinator = PicpakCoordinator(hass, entry)
 
+    # Auto-pair BLE au premier setup. Le device sort probablement du config_flow
+    # où l'user vient de le scanner (donc encore en pairing mode LED bleue) —
+    # c'est le meilleur moment pour capturer un bond persistant qui débloquera
+    # le MTU (AcquireNotify des characteristics chiffrées) et permettra le
+    # réveil du device sans nouveau press physique. bleak.pair() est idempotent :
+    # skip silencieusement si device déjà bondé côté BlueZ.
+    try:
+        await coordinator.client.pair()
+    except Exception as exc:  # pragma: no cover — best effort
+        _LOGGER.warning(
+            "picpak: auto-pair at setup failed — device may not be in pairing mode "
+            "(press 3s on the button and call the `picpak.pair_device` service to retry). "
+            "Continuing without a bond, connection may fail or MTU may stay at 23. Error: %s",
+            exc,
+        )
+
     await coordinator.async_config_entry_first_refresh()
 
     try:
